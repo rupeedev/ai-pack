@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../PProject/AI-Infra"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../RAG"
+		}
+	],
+	"settings": {}
+}

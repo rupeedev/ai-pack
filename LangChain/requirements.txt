@@ -1,0 +1,18 @@
+# Core LangChain packages
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+
+# LLM Integrations
+langchain-openai>=0.2.0
+langchain-google-genai>=2.0.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Jupyter notebook support
+ipykernel>=6.29.0
+ipython>=8.12.0
+
+# Additional utilities
+openai>=1.0.0
