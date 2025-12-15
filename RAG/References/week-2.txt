@@ -1,0 +1,61 @@
+Pre-Read (Start Here)
+
+Before watching the Week 2 videos, please go through the following resources.
+They will give you the right mental model for how real production data ingestion pipelines are built for RAG systems.
+
+
+1️⃣ Week 2 Blog: Bringing Your RAG System to Life
+
+This blog explains how we transform Week 1’s infrastructure into a real, automated system by:
+fetching daily arXiv papers
+parsing scientific PDFs reliably
+running ingestion via Airflow
+storing structured metadata for search
+
+Read it here:
+👉 https://jamwithai.substack.com/p/bringing-your-rag-system-to-life
+
+
+2️⃣ Week 2 Code Repository (Clone the Week 2.0 Release Only)
+
+To follow exactly what appears in the videos, please clone only the Week 2.0 release — not the main branch.
+
+
+🔽 Download the tagged release
+
+👉 https://github.com/jamwithai/arxiv-paper-curator/releases/tag/week2.0
+
+OR clone it directly with git:
+git clone --branch week2.0 https://github.com/jamwithai/arxiv-paper-curator
+
+This ensures:
+You get the precise version used in Week 2
+No future changes break your setup
+All DAG and parsing files match the videos exactly
+
+
+Folder locations you will use:
+
+airflow/dags/arxiv_paper_ingestion.py - Week 2 DAG
+src/services/arxiv/ - API client + factory
+src/services/pdf_parser/ - Docling parsing logic
+notebooks/week2/ - PDF parsing + ingestion debugging notebook
+
+
+3️⃣ What You Should Know Before the Videos
+
+RAG starts with data engineering, not embeddings.
+Week 2’s focus is on building a reliable ingestion pipeline, because without clean, structured data → retrieval & generation fail.
+arXiv API enforces strict rate limits (3 seconds).
+Scientific PDFs are messy - Docling helps structure them properly.
+Airflow gives you automation, reliability, and traceability.
+
+In Week 2, you will build:
+
+Automated arXiv ingestion service
+Airflow DAG scheduled daily
+Docling-based PDF parser
+Metadata extraction + structured storage
+Error-tolerant ingestion architecture
+
+This pipeline becomes the data foundation for Week 3 (search), Week 4 (chunking + vectors), and the complete RAG pipeline in Weeks 5 and 6.

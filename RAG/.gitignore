@@ -1,0 +1,57 @@
+# Root level .gitignore for RAG project
+
+# Environment variables (CRITICAL - never commit these!)
+.env
+*.env
+!.env.example
+!.env.test
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MacOS
+.DS_Store
+
+# Docker volumes
+postgres_data/
+opensearch_data/
+ollama_data/
+airflow_logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude Code
+.claude_code/
+claude_session_*
+.claude_session/
+.claude/
+
+# Logs
+*.log
+
+# Credentials and secrets (extra safety)
+**/credentials.json
+**/secrets.json
+**/*secret*
+**/*password*
+**/*token*
+**/api_keys*

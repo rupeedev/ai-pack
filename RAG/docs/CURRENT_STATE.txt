@@ -1,0 +1,106 @@
+# CURRENT STATE - RAG Training Project
+
+Last Updated: 2025-12-01
+
+## Project Status
+
+### Overview
+Multi-week RAG (Retrieval-Augmented Generation) training project implementing a production-grade arXiv Paper Curator system. The project progresses through 7 weeks, each building on previous functionality.
+
+### Current Progress
+
+**Completed:**
+- ✅ Week 1: Infrastructure setup (FastAPI, PostgreSQL, OpenSearch, Airflow, Ollama)
+- ✅ Week 2: Data ingestion pipeline with arXiv API integration
+- ✅ Week 3: BM25 keyword search implementation
+- ✅ Week 4: Hybrid search (BM25 + vector embeddings)
+- ✅ Week 5: Complete RAG with LLM integration
+- ✅ Week 6: Production monitoring and caching
+- ✅ Week 7: Agentic RAG with LangGraph and Telegram bot
+- ✅ Git repository initialized
+- ✅ GitHub remote configured (git@github.com:rupeedev/rag-training.git)
+- ✅ Initial commit and push to main branch
+- ✅ Root-level .gitignore created for security
+- ✅ CLAUDE.md documentation created
+
+**Current Focus:**
+- Setting up documentation structure
+- Organizing project resources
+
+### Repository Information
+
+**Remote:** git@github.com:rupeedev/rag-training.git
+**Branch:** main
+**Commit:** 690cbcd - Initial commit with all 7 weeks
+
+### Active Services (Week 1)
+
+Running on localhost:
+- API Server: http://localhost:8000 (FastAPI)
+- API Docs: http://localhost:8000/docs
+- PostgreSQL: localhost:5432
+- OpenSearch: http://localhost:9200
+- OpenSearch Dashboards: http://localhost:5601
+- Airflow: http://localhost:8080
+- Ollama: http://localhost:11434
+
+### Project Structure
+
+```
+RAG/
+├── docs/                  # Documentation (NEW)
+├── References/            # Reference materials and guides
+├── image/                 # Image assets
+├── main/                  # Week 7 - Latest implementation
+├── week-1/               # Infrastructure foundation
+├── week-2/               # Data ingestion
+├── week-3/               # BM25 search
+├── week-4/               # Hybrid search
+├── week-5/               # Complete RAG
+├── week-6/               # Monitoring & caching
+├── week-7/               # Agentic RAG with Telegram
+├── .gitignore            # Security (ignores .env files)
+└── CLAUDE.md             # AI assistance guide
+```
+
+### Technology Stack
+
+- **Backend:** FastAPI, Python 3.12+, UV package manager
+- **Database:** PostgreSQL 16
+- **Search:** OpenSearch 2.19 (hybrid search)
+- **LLM:** Ollama (local) with llama3.2:3b-instruct-fp16
+- **Workflow:** Apache Airflow 3.0
+- **Embeddings:** Jina AI API
+- **Monitoring:** Langfuse
+- **Caching:** Redis
+- **Agents:** LangGraph
+- **Bot:** python-telegram-bot
+- **Container:** Docker Compose
+- **Development:** Ruff, MyPy, Pytest
+
+### Next Steps
+
+1. Complete documentation setup
+2. Explore Week 1 implementation in detail
+3. Begin working through weekly learning path
+4. Set up development environment for each week
+
+### Known Issues
+
+- None currently
+
+### Dependencies
+
+All dependencies managed via `pyproject.toml` and `uv.lock` in each week directory.
+
+### Environment Variables
+
+Each week has:
+- `.env.example` - Template (committed to git)
+- `.env.test` - Test configuration (committed to git)
+- `.env` - Local configuration (gitignored, not committed)
+
+Required for later weeks:
+- JINA_API_KEY (Week 4+)
+- TELEGRAM__BOT_TOKEN (Week 7)
+- LANGFUSE keys (Week 6, optional)

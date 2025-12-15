@@ -1,0 +1,51 @@
+Pre-Read (Start Here)
+
+Before watching the Week 4 videos, please go through the following resources.
+
+They will give you the right mental model for how chunking + hybrid search turn basic keyword search into a truly intelligent retrieval system.
+
+1️⃣ Week 4 Blog: The Chunking Strategy That Makes Hybrid Search Work
+
+This blog explains how we move from Week 3’s BM25 search into semantic + keyword hybrid retrieval by:
+applying structured chunking
+generating high-quality embeddings
+combining BM25 + vectors using RRF
+building a unified hybrid search API
+
+Read it here:
+👉 https://jamwithai.substack.com/p/chunking-strategies-and-hybrid-rag
+
+2️⃣ Week 4 Code Repository (Clone the Week 4.0 Release Only)
+
+To follow exactly what appears in the videos, please clone only the Week 4.0 release - not the main branch.
+
+🔽 Download the tagged release
+👉 https://github.com/jamwithai/arxiv-paper-curator/releases/tag/week4.0
+
+Or clone it directly:
+git clone --branch week4.0 https://github.com/jamwithai/arxiv-paper-curator
+
+This ensures:
+You get the exact version used in Week 4
+Chunking + embedding logic match the videos
+No future changes break your setup
+
+Folder locations you will use:
+src/services/indexing/text_chunker.py
+src/services/embeddings/
+src/routers/hybrid_search.py
+notebooks/week4/
+3️⃣ What You Should Know Before the Videos
+
+Hybrid search is only effective when both sides - keyword and semantic are clean and well-designed.
+
+Week 4 focuses on building the semantic layer of your RAG system by introducing chunking and embeddings.
+
+In Week 4, you will build:
+
+a section-aware text chunker
+a production embeddings pipeline
+a hybrid search service using RRF
+a unified search API that supports all modes
+
+This hybrid layer becomes the core of Week 5 (RAG pipeline) and Week 6 (monitoring + caching)

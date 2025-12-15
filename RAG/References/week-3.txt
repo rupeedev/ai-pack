@@ -1,0 +1,55 @@
+Pre-Read (Start Here)
+
+Before watching the Week 3 videos, please go through the following resources.
+
+They will give you the right mental model for how production keyword search is built before hybrid RAG systems.
+
+
+1️⃣ Week 3 Blog: The Search Foundation Every RAG System Needs
+
+This blog explains how we move from raw ingested data (Week 2) to reliable search by:
+
+creating a clean OpenSearch index
+understanding BM25 keyword ranking
+building a proper search API
+adding filters & scoring logic
+
+Read it here:
+
+👉 https://jamwithai.substack.com/p/the-search-foundation-every-rag-system
+
+
+2️⃣ Week 3 Code Repository (Clone the Week 3.0 Release Only)
+
+To follow exactly what appears in the videos, please clone only the Week 3.0 release — not the main branch.
+
+🔽 Download the tagged release
+
+👉 https://github.com/jamwithai/arxiv-paper-curator/releases/tag/week3.0
+
+Or clone it directly:
+git clone --branch week3.0 https://github.com/jamwithai/arxiv-paper-curator
+
+This ensures:
+you get the exact version used in Week 3
+index & search logic match the videos
+no future changes break your setup
+
+Folder locations you will use:
+src/services/opensearch/ - search service
+src/routers/search.py - search API
+notebooks/week3/ - OpenSearch + BM25 notebook
+
+3️⃣ What You Should Know Before the Videos
+
+RAG works only when retrieval works.
+
+Week 3 focuses on building a strong keyword search layer, because without precise keyword retrieval → hybrid search, chunking, and RAG quality all drop.
+
+In Week 3, you will build:
+a production OpenSearch index
+BM25-based keyword retrieval
+a search API with filters
+structured queries with scoring
+
+This search foundation becomes the base for Week 4 (chunking + hybrid search), Week 5 (RAG), and Week 6 (monitoring + caching).

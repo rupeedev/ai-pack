@@ -1,0 +1,1714 @@
+arXiv Paper Curator - Technical Documentation
+=============================================
+
+TL;DR - Quick Reference
+=======================
+Multi-week RAG learning project (Week 1-7) building a production-grade AI research assistant.
+Latest complete version in /main directory (Week 7: Agentic RAG with Telegram Bot).
+Stack: Python 3.12, FastAPI, PostgreSQL 16, OpenSearch 2.19, Ollama LLM, LangGraph, Redis.
+70+ endpoints across 7 weekly implementations, 13 Docker services, 40+ Python services.
+Start: docker compose up --build -d | Check: make health | UI: http://localhost:7861
+
+
+Project Overview and Quick Stats
+=================================
+
+Application Name: moai-zero-to-rag (Mother of AI - Phase 1: Zero to RAG)
+Version: 0.1.0
+Repository: Multi-week learning project with progressive weekly implementations
+Purpose: Production-grade RAG system for arXiv paper curation and intelligent question-answering
+Main Capabilities: Academic paper ingestion, hybrid search (BM25 + semantic), RAG with local LLM,
+                   agentic reasoning with LangGraph, Telegram bot integration, caching, monitoring
+
+Quick Statistics:
+- Programming Language: Python 3.12+
+- Total Services: 13 Docker containers
+- API Endpoints: 5 main routers (ping, hybrid-search, ask, stream, agentic-ask)
+- Service Modules: 40+ Python services across 8 major categories
+- Weekly Implementations: 7 standalone versions (week-1 through week-7)
+- Dependencies (Production): 29 packages (FastAPI, SQLAlchemy, OpenSearch, LangGraph, etc.)
+- Dependencies (Development): 19 packages (Pytest, MyPy, Ruff, Jupyter, etc.)
+- Docker Volumes: 8 persistent volumes
+- Notebooks: 7 Jupyter notebooks (one per week)
+- Supported Environments: Development, Staging, Production
+
+Target Users:
+- AI/ML Engineers learning production RAG architecture
+- Software Engineers building end-to-end AI applications
+- Data Scientists implementing production AI systems
+- Researchers needing automated paper curation and analysis
+
+
+Technology Stack Breakdown
+===========================
+
+Core Framework & Build Tools
+-----------------------------
+- FastAPI 0.115.12+       : Async REST API framework with automatic OpenAPI docs
+- Uvicorn 0.34.0+         : ASGI server for FastAPI
+- Pydantic 2.11.3+        : Data validation and settings management
+- Pydantic-Settings 2.8.1+: Environment-based configuration
+- Python 3.12+            : Language runtime (required: >=3.12, <3.13)
+- UV Package Manager      : Fast Python dependency management and virtual environments
+
+Database & ORM
+--------------
+- PostgreSQL 16           : Primary data store for paper metadata and content
+- SQLAlchemy 2.0.0+       : ORM and database abstraction
+- Psycopg2-binary 2.9.10+ : PostgreSQL adapter for Python
+- Alembic 1.13.3+         : Database migration management
+
+Search & Retrieval
+------------------
+- OpenSearch 2.19.0       : Hybrid search engine (BM25 + k-NN vector search)
+- OpenSearch-py 3.0.0+    : Python client for OpenSearch
+- Sentence-Transformers 5.1.0+ : Embedding generation (local fallback)
+- Jina AI API             : Cloud-based embedding service (1024-dimensional vectors)
+
+LLM & AI Orchestration
+-----------------------
+- Ollama 0.11.2           : Local LLM serving (llama3.2:1b default)
+- LangGraph 0.2.0+        : Agentic workflow orchestration with state management
+- LangChain 0.3.0+        : LLM application framework
+- LangChain-Core 0.3.0+   : Core abstractions for LLMs
+- LangChain-Community 0.3.0+ : Community integrations
+- LangChain-Ollama 0.3.0+ : Ollama integration for LangChain
+
+Document Processing
+-------------------
+- Docling 2.43.0+         : Scientific PDF parsing (IBM Research)
+- Requests 2.32.3+        : HTTP client for arXiv API
+- HTTPX 0.28.1+           : Async HTTP client
+- Python-dateutil 2.9.0+  : Date parsing utilities
+
+Monitoring & Observability
+---------------------------
+- Langfuse 3.0+           : RAG pipeline tracing and observability
+- ClickHouse 24.8         : Analytics database for Langfuse
+- PostgreSQL 17           : Langfuse metadata storage
+
+Caching & Performance
+---------------------
+- Redis 7-alpine          : High-performance caching layer
+- Redis-py 6.4.0+         : Python Redis client
+- MinIO                   : S3-compatible object storage for Langfuse
+
+Workflow Orchestration
+----------------------
+- Apache Airflow 3.0      : Automated data pipeline scheduling
+- LocalExecutor           : Airflow execution mode
+
+Bot Integration
+---------------
+- Python-telegram-bot 21.0+ : Telegram bot framework for mobile access
+
+Development Tools
+-----------------
+- Ruff 0.11.5+            : Python linter and formatter (replaces Black, isort, flake8)
+- MyPy 1.15.0+            : Static type checking
+- Pytest 8.3.5+           : Testing framework
+- Pytest-cov 6.1.1+       : Test coverage reporting
+- Pytest-aiohttp 1.1.0+   : Async HTTP testing
+- Pytest-mock 3.14.0+     : Mocking support
+- Pre-commit 4.2.0+       : Git hooks for code quality
+- Testcontainers 4.10.0+  : Integration testing with Docker containers
+- Jupyter 1.1.1+          : Interactive notebooks for learning
+- Polyfactory 2.21.0+     : Test data generation
+
+UI Components
+-------------
+- Gradio 4.0.0+           : Interactive chat interface for RAG
+- Grandalf 0.8+           : Graph visualization (optional)
+
+External Services
+-----------------
+- arXiv API               : Academic paper metadata and PDF retrieval
+- Jina AI Embeddings API  : Semantic embedding generation (jina-embeddings-v3)
+
+
+Project Structure
+=================
+
+Root Directory Layout
+---------------------
+RAG/
+├── main/                       # Week 7 - Complete implementation with agentic RAG
+├── week-1/                     # Infrastructure setup only
+├── week-2/                     # + Data ingestion pipeline
+├── week-3/                     # + BM25 keyword search
+├── week-4/                     # + Hybrid search (BM25 + vectors)
+├── week-5/                     # + Complete RAG with LLM
+├── week-6/                     # + Monitoring and caching
+├── week-7/                     # + Agentic RAG with Telegram bot
+├── References/                 # Documentation and learning materials
+├── docs/                       # Project documentation
+├── image/                      # Static images and diagrams
+├── CLAUDE.md                   # AI assistant instructions
+└── .gitignore                  # Git ignore patterns
+
+Main Application Structure (main/ directory)
+---------------------------------------------
+main/
+├── src/                        # Main application source code
+│   ├── routers/                # FastAPI endpoint definitions
+│   │   ├── __init__.py
+│   │   ├── ping.py             # Health check endpoint
+│   │   ├── hybrid_search.py    # Search API (BM25/hybrid/vector)
+│   │   ├── ask.py              # RAG question-answering
+│   │   └── agentic_ask.py      # Agentic RAG with LangGraph
+│   │
+│   ├── services/               # Business logic layer
+│   │   ├── arxiv/              # arXiv API integration
+│   │   │   ├── client.py       # Rate-limited API client
+│   │   │   └── factory.py      # Service factory
+│   │   │
+│   │   ├── pdf_parser/         # PDF parsing with Docling
+│   │   │   ├── parser.py       # Abstract parser interface
+│   │   │   ├── docling.py      # Docling implementation
+│   │   │   └── factory.py      # Parser factory
+│   │   │
+│   │   ├── opensearch/         # Search engine client
+│   │   │   ├── client.py       # OpenSearch operations
+│   │   │   ├── query_builder.py # Query DSL construction
+│   │   │   ├── index_config_hybrid.py # Index mappings
+│   │   │   └── factory.py      # Client factory
+│   │   │
+│   │   ├── embeddings/         # Semantic embeddings
+│   │   │   ├── jina_client.py  # Jina AI integration
+│   │   │   └── factory.py      # Embeddings factory
+│   │   │
+│   │   ├── indexing/           # Document processing
+│   │   │   ├── text_chunker.py # Section-based chunking
+│   │   │   ├── hybrid_indexer.py # Index management
+│   │   │   └── factory.py      # Indexer factory
+│   │   │
+│   │   ├── ollama/             # Local LLM client
+│   │   │   ├── client.py       # Ollama API client
+│   │   │   ├── prompts.py      # System prompts
+│   │   │   └── factory.py      # LLM factory
+│   │   │
+│   │   ├── langfuse/           # Observability
+│   │   │   ├── client.py       # Langfuse client wrapper
+│   │   │   ├── tracer.py       # RAG pipeline tracing
+│   │   │   └── factory.py      # Tracer factory
+│   │   │
+│   │   ├── cache/              # Redis caching
+│   │   │   ├── client.py       # Cache operations
+│   │   │   └── factory.py      # Cache factory
+│   │   │
+│   │   ├── telegram/           # Telegram bot (Week 7)
+│   │   │   ├── bot.py          # Bot handlers and commands
+│   │   │   └── factory.py      # Bot factory
+│   │   │
+│   │   ├── agents/             # LangGraph agents (Week 7)
+│   │   │   ├── agentic_rag.py  # Main workflow orchestrator
+│   │   │   ├── state.py        # Agent state management
+│   │   │   ├── context.py      # Agent context
+│   │   │   ├── config.py       # Agent configuration
+│   │   │   ├── models.py       # Agent data models
+│   │   │   ├── tools.py        # Agent tools
+│   │   │   ├── prompts.py      # Agent prompts
+│   │   │   ├── factory.py      # Agent factory
+│   │   │   └── nodes/          # Agent decision nodes
+│   │   │       ├── guardrail_node.py      # Query validation
+│   │   │       ├── retrieve_node.py       # Document retrieval
+│   │   │       ├── grade_documents_node.py # Relevance grading
+│   │   │       ├── rewrite_query_node.py  # Query refinement
+│   │   │       ├── generate_answer_node.py # Answer generation
+│   │   │       ├── out_of_scope_node.py   # Out-of-domain handler
+│   │   │       └── utils.py               # Node utilities
+│   │   │
+│   │   └── metadata_fetcher.py # Main orchestrator for ingestion
+│   │
+│   ├── models/                 # SQLAlchemy ORM models
+│   │   ├── __init__.py
+│   │   └── paper.py            # Paper entity model
+│   │
+│   ├── schemas/                # Pydantic validation models
+│   │   └── api/                # API request/response schemas
+│   │       ├── search.py       # Search-related schemas
+│   │       └── ask.py          # RAG-related schemas
+│   │
+│   ├── repositories/           # Database access layer
+│   │   └── paper_repository.py # Paper CRUD operations
+│   │
+│   ├── db/                     # Database management
+│   │   ├── factory.py          # Database factory
+│   │   └── database.py         # Connection management
+│   │
+│   ├── dependencies.py         # FastAPI dependency injection
+│   ├── config.py               # Environment configuration
+│   ├── main.py                 # FastAPI application entry
+│   └── gradio_app.py           # Gradio chat interface
+│
+├── airflow/                    # Workflow orchestration
+│   ├── dags/                   # Airflow DAG definitions
+│   │   ├── arxiv_paper_ingestion.py  # Main ingestion DAG
+│   │   ├── hello_world_dag.py        # Example DAG
+│   │   └── arxiv_ingestion/          # Ingestion tasks
+│   │       ├── metadata_task.py
+│   │       ├── parsing_task.py
+│   │       └── indexing_task.py
+│   ├── Dockerfile              # Airflow container build
+│   └── entrypoint.sh           # Airflow startup script
+│
+├── notebooks/                  # Jupyter learning notebooks
+│   ├── week1/                  # Week 1: Infrastructure setup
+│   ├── week2/                  # Week 2: Data ingestion
+│   ├── week3/                  # Week 3: OpenSearch & BM25
+│   ├── week4/                  # Week 4: Hybrid search
+│   ├── week5/                  # Week 5: Complete RAG
+│   ├── week6/                  # Week 6: Monitoring & caching
+│   └── week7/                  # Week 7: Agentic RAG
+│
+├── tests/                      # Test suite
+│   ├── integration/            # Integration tests with testcontainers
+│   └── unit/                   # Unit tests
+│
+├── alembic/                    # Database migrations
+│   ├── versions/               # Migration scripts
+│   └── env.py                  # Alembic configuration
+│
+├── static/                     # Static assets (images, diagrams)
+├── data/                       # Runtime data (PDFs, cache)
+├── pyproject.toml              # Python project configuration
+├── uv.lock                     # Locked dependency versions
+├── Dockerfile                  # API container build
+├── compose.yml                 # Docker Compose orchestration
+├── Makefile                    # Development commands
+├── .env.example                # Environment variable template
+├── .gitignore                  # Git ignore patterns
+├── gradio_launcher.py          # Gradio UI launcher script
+└── README.md                   # Project overview and setup
+
+Key Files and Configuration
+----------------------------
+- pyproject.toml          : Python dependencies, build config, tool settings (Ruff, MyPy, Pytest)
+- compose.yml             : 13 service definitions with health checks and networking
+- Makefile                : 12 commands for development workflow
+- .env.example            : 95 configuration variables with defaults
+- CLAUDE.md               : AI assistant context and development guidelines
+- src/config.py           : Typed settings with validation (Pydantic)
+- src/main.py             : FastAPI app with lifespan management
+- src/dependencies.py     : Dependency injection setup
+
+Naming Conventions
+------------------
+- Files: snake_case (e.g., hybrid_search.py, text_chunker.py)
+- Classes: PascalCase (e.g., OpenSearchClient, RAGTracer)
+- Functions: snake_case (e.g., embed_query, search_unified)
+- Constants: UPPER_SNAKE_CASE (e.g., PROJECT_ROOT, ENV_FILE_PATH)
+- Environment Variables: UPPER_SNAKE_CASE with double underscores for nesting
+  (e.g., OPENSEARCH__INDEX_NAME, ARXIV__MAX_RESULTS)
+
+Module Organization Pattern
+----------------------------
+Each service module follows a consistent factory pattern:
+1. Client/Service implementation (client.py, service.py)
+2. Factory function for initialization (factory.py)
+3. Supporting utilities (models.py, config.py, prompts.py)
+
+
+Main Features & Modules
+=======================
+
+1. Health Monitoring (Week 1+)
+   Description: Service health checks and status monitoring
+   Key Components: src/routers/ping.py
+   Routes: GET /api/v1/health, GET /api/v1/ping
+   Services: All 13 Docker services with health check endpoints
+
+2. arXiv Paper Ingestion (Week 2+)
+   Description: Automated fetching and parsing of academic papers
+   Key Components:
+   - src/services/arxiv/client.py (rate-limited API client)
+   - src/services/pdf_parser/docling.py (scientific PDF parsing)
+   - src/services/metadata_fetcher.py (orchestration)
+   - airflow/dags/arxiv_paper_ingestion.py (scheduled workflow)
+   Routes: GET /api/v1/papers, GET /api/v1/papers/{id}
+   Stores: PostgreSQL (paper metadata)
+
+3. BM25 Keyword Search (Week 3+)
+   Description: Full-text search with relevance ranking
+   Key Components:
+   - src/services/opensearch/client.py (search operations)
+   - src/services/opensearch/query_builder.py (DSL construction)
+   Routes: POST /api/v1/hybrid-search/ (use_hybrid=false)
+   Stores: OpenSearch (arxiv-papers-chunks index)
+
+4. Semantic Embeddings (Week 4+)
+   Description: Text embedding generation for semantic search
+   Key Components:
+   - src/services/embeddings/jina_client.py (Jina AI integration)
+   Routes: Used internally by hybrid search
+   Stores: OpenSearch (knn_vector fields)
+
+5. Document Chunking (Week 4+)
+   Description: Section-based intelligent text segmentation
+   Key Components:
+   - src/services/indexing/text_chunker.py (chunking logic)
+   - src/services/indexing/hybrid_indexer.py (index management)
+   Configuration: CHUNKING__CHUNK_SIZE=600, CHUNKING__OVERLAP_SIZE=100
+   Stores: OpenSearch (chunks with metadata)
+
+6. Hybrid Search (Week 4+)
+   Description: Combined BM25 + semantic vector search with RRF fusion
+   Key Components:
+   - src/routers/hybrid_search.py (unified search API)
+   - src/services/opensearch/client.py (search_unified method)
+   Routes: POST /api/v1/hybrid-search/ (use_hybrid=true)
+   Parameters: query, size, from_, categories, latest_papers, use_hybrid, min_score
+   Stores: OpenSearch (hybrid queries with RRF pipeline)
+
+7. RAG Question Answering (Week 5+)
+   Description: Context-aware answer generation with local LLM
+   Key Components:
+   - src/routers/ask.py (standard and streaming endpoints)
+   - src/services/ollama/client.py (LLM integration)
+   - src/services/ollama/prompts.py (optimized system prompts)
+   Routes:
+   - POST /api/v1/ask (standard response)
+   - POST /api/v1/stream (streaming SSE response)
+   Parameters: query, top_k, categories, use_hybrid
+   LLM: llama3.2:1b (configurable via OLLAMA_MODEL)
+
+8. Gradio Chat Interface (Week 5+)
+   Description: User-friendly web UI for RAG interactions
+   Key Components:
+   - src/gradio_app.py (Gradio interface definition)
+   - gradio_launcher.py (launcher script)
+   Access: http://localhost:7861
+   Features: Streaming responses, parameter controls, source citations
+
+9. RAG Pipeline Tracing (Week 6+)
+   Description: End-to-end observability with Langfuse
+   Key Components:
+   - src/services/langfuse/tracer.py (RAG-specific tracing)
+   - src/services/langfuse/client.py (Langfuse wrapper)
+   Routes: All RAG endpoints instrumented
+   Dashboard: http://localhost:3001
+   Metrics: Latency, token usage, cost, trace hierarchy
+
+10. Query Response Caching (Week 6+)
+    Description: Redis-based exact-match caching for performance
+    Key Components:
+    - src/services/cache/client.py (cache operations)
+    Routes: POST /api/v1/ask (with cache layer)
+    Configuration: REDIS__TTL_HOURS=6
+    Performance: 150-400x speedup for cached queries
+
+11. Agentic RAG Workflow (Week 7+)
+    Description: Intelligent retrieval with decision-making agents
+    Key Components:
+    - src/services/agents/agentic_rag.py (LangGraph workflow)
+    - src/services/agents/nodes/ (6 decision nodes)
+    Routes: POST /api/v1/ask-agentic
+    Features:
+    - Guardrail validation (out-of-domain detection)
+    - Adaptive retrieval (multi-attempt with fallback)
+    - Document grading (semantic relevance evaluation)
+    - Query rewriting (automatic refinement)
+    - Reasoning transparency (step-by-step logging)
+
+12. Telegram Bot Integration (Week 7+)
+    Description: Mobile-first conversational AI access
+    Key Components:
+    - src/services/telegram/bot.py (async bot handlers)
+    Commands:
+    - /start : Bot introduction and help
+    - /help  : Available commands
+    - /ask   : Question answering
+    Configuration: TELEGRAM__BOT_TOKEN, TELEGRAM__ENABLED
+    Features: Async message handling, error recovery, typing indicators
+
+13. Workflow Automation (Week 2+)
+    Description: Scheduled paper ingestion with Apache Airflow
+    Key Components:
+    - airflow/dags/arxiv_paper_ingestion.py (daily DAG)
+    Dashboard: http://localhost:8080
+    Schedule: Daily at 2 AM (configurable)
+    Tasks: Metadata fetch → PDF download → Parse → Store → Index
+
+Authentication & Authorization
+-------------------------------
+Current Implementation: No authentication required (development mode)
+Production Recommendations:
+- API key authentication for REST endpoints
+- JWT tokens for Gradio interface
+- Bot token authentication for Telegram (already implemented)
+- Langfuse dashboard authentication (admin123 / admin@example.com default)
+
+Role-Based Access Control
+--------------------------
+Not implemented. All endpoints are publicly accessible.
+Recommended for production:
+- Admin role: Full access to all endpoints
+- User role: Read-only access to search and ask endpoints
+- Bot role: Limited access for Telegram integration
+
+
+Environment Configuration
+==========================
+
+Development Environment
+-----------------------
+API Endpoint: http://localhost:8000
+OpenSearch: http://localhost:9200
+Ollama: http://localhost:11434
+Database: postgresql+psycopg2://rag_user:rag_password@localhost:5432/rag_db
+Redis: redis://localhost:6379
+Langfuse: http://localhost:3001
+
+Container Environment (Docker Compose)
+---------------------------------------
+API Endpoint: http://api:8000
+OpenSearch: http://opensearch:9200
+Ollama: http://ollama:11434
+Database: postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+Redis: redis://redis:6379
+Langfuse: http://langfuse-web:3000
+
+Third-Party Service Configuration
+----------------------------------
+arXiv API:
+  Base URL: https://export.arxiv.org/api/query
+  Rate Limit: 3 seconds between requests (ARXIV__RATE_LIMIT_DELAY)
+  Max Results: 15 papers per query (ARXIV__MAX_RESULTS)
+  Search Category: cs.AI (ARXIV__SEARCH_CATEGORY)
+  Timeout: 30 seconds (ARXIV__TIMEOUT_SECONDS)
+
+Jina AI Embeddings:
+  API Key: Required (JINA_API_KEY)
+  Model: jina-embeddings-v3
+  Dimension: 1024
+  Endpoint: Managed by Jina SDK
+
+Ollama LLM:
+  Model: llama3.2:1b (OLLAMA_MODEL)
+  Host: http://localhost:11434 (OLLAMA_HOST)
+  Timeout: 300 seconds (OLLAMA_TIMEOUT)
+  Context Window: 8192 tokens (model-dependent)
+
+Feature Flags
+-------------
+TELEGRAM__ENABLED: Enable/disable Telegram bot (default: false)
+LANGFUSE_ENABLED: Enable/disable tracing (default: true)
+DEBUG: Enable debug logging (default: true)
+PDF_PARSER__DO_OCR: Enable OCR for scanned PDFs (default: false)
+PDF_PARSER__DO_TABLE_STRUCTURE: Parse table structures (default: true)
+
+Environment Variable Examples
+------------------------------
+# Application
+DEBUG=true
+ENVIRONMENT=development
+APP_VERSION=0.1.0
+
+# Database
+POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+
+# OpenSearch
+OPENSEARCH__HOST=http://opensearch:9200
+OPENSEARCH__INDEX_NAME=arxiv-papers
+OPENSEARCH__VECTOR_DIMENSION=1024
+
+# Embeddings
+JINA_API_KEY=jina_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# LLM
+OLLAMA_HOST=http://ollama:11434
+OLLAMA_MODEL=llama3.2:1b
+
+# Cache
+REDIS__HOST=redis
+REDIS__TTL_HOURS=6
+
+# Monitoring
+LANGFUSE_ENABLED=true
+LANGFUSE_HOST=http://langfuse-web:3000
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx
+
+# Telegram
+TELEGRAM__ENABLED=true
+TELEGRAM__BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+
+
+Build & Deployment Processes
+=============================
+
+Development Commands
+--------------------
+# Install dependencies
+uv sync                         # Install all dependencies
+uv sync --no-dev                # Production dependencies only
+
+# Run development server
+uv run uvicorn src.main:app --reload --port 8000
+
+# Run Gradio interface
+uv run python gradio_launcher.py
+
+# Run Jupyter notebooks
+uv run jupyter notebook notebooks/weekX/
+
+Testing Commands
+----------------
+# Run all tests
+make test                       # or: uv run pytest
+
+# Run with coverage
+make test-cov                   # or: uv run pytest --cov=src --cov-report=html
+
+# Run specific test file
+uv run pytest tests/integration/test_search.py
+
+# Run with verbose output
+uv run pytest -v -s
+
+Code Quality Commands
+---------------------
+# Format code
+make format                     # or: uv run ruff format
+
+# Lint code
+make lint                       # or: uv run ruff check --fix
+
+# Type check
+make lint                       # or: uv run mypy src/
+
+# Pre-commit hooks
+pre-commit install              # Setup git hooks
+pre-commit run --all-files      # Run all checks
+
+Service Management
+------------------
+# Start all services
+make start                      # or: docker compose up --build -d
+
+# Stop all services
+make stop                       # or: docker compose down
+
+# Restart services
+make restart                    # or: docker compose restart
+
+# Check service status
+make status                     # or: docker compose ps
+
+# View logs
+make logs                       # or: docker compose logs -f
+docker compose logs -f api      # Specific service logs
+
+# Check health
+make health                     # Curl all health endpoints
+
+Build Output Details
+--------------------
+Docker Images:
+- rag-api:latest              : FastAPI application (multi-stage build)
+- rag-airflow:latest          : Airflow with custom dependencies
+
+Build Artifacts:
+- .venv/                      : Virtual environment (uv managed)
+- htmlcov/                    : Test coverage reports
+- .pytest_cache/              : Pytest cache
+- .mypy_cache/                : MyPy type check cache
+- .ruff_cache/                : Ruff linter cache
+- data/arxiv_pdfs/            : Downloaded PDFs
+- airflow/logs/               : Airflow task logs
+
+Deployment Steps
+----------------
+1. Clone repository
+   git clone <repository-url>
+   cd arxiv-paper-curator
+
+2. Configure environment
+   cp .env.example .env
+   # Edit .env with required values:
+   # - JINA_API_KEY (required for Week 4+)
+   # - TELEGRAM__BOT_TOKEN (optional, for Week 7)
+   # - LANGFUSE keys (optional, for Week 6+)
+
+3. Install dependencies
+   uv sync
+
+4. Start infrastructure services
+   docker compose up --build -d postgres opensearch redis
+
+5. Wait for services to be healthy
+   docker compose ps
+   # Wait until all services show "healthy"
+
+6. Run database migrations (if applicable)
+   uv run alembic upgrade head
+
+7. Start all services
+   docker compose up --build -d
+
+8. Verify deployment
+   make health
+   curl http://localhost:8000/api/v1/health
+
+9. Pull Ollama model (first time only)
+   docker exec -it rag-ollama ollama pull llama3.2:1b
+
+10. Access services
+    - API: http://localhost:8000/docs
+    - Gradio: http://localhost:7861
+    - Airflow: http://localhost:8080
+    - Langfuse: http://localhost:3001
+    - OpenSearch: http://localhost:5601
+
+
+Routing Structure
+=================
+
+Complete Route List
+-------------------
+
+Health Check Routes (src/routers/ping.py)
+------------------------------------------
+GET  /api/v1/health
+     Purpose: Comprehensive health check for all services
+     Authentication: None
+     Response: JSON with service statuses (postgres, opensearch, ollama, redis, cache)
+     Example: curl http://localhost:8000/api/v1/health
+
+GET  /api/v1/ping
+     Purpose: Simple liveness check
+     Authentication: None
+     Response: {"message": "pong"}
+     Example: curl http://localhost:8000/api/v1/ping
+
+Hybrid Search Routes (src/routers/hybrid_search.py)
+----------------------------------------------------
+POST /api/v1/hybrid-search/
+     Purpose: Unified search endpoint supporting BM25, vector, and hybrid modes
+     Authentication: None
+     Request Body:
+       {
+         "query": "string",
+         "size": 10,
+         "from_": 0,
+         "categories": ["cs.AI"],
+         "latest_papers": true,
+         "use_hybrid": true,
+         "min_score": 0.0
+       }
+     Response: SearchResponse with hits, total, search_mode
+     Search Modes:
+       - BM25 only: use_hybrid=false
+       - Hybrid: use_hybrid=true (BM25 + semantic with RRF fusion)
+     Example: curl -X POST http://localhost:8000/api/v1/hybrid-search/ \
+              -H "Content-Type: application/json" \
+              -d '{"query": "transformer attention", "use_hybrid": true}'
+
+RAG Question Answering Routes (src/routers/ask.py)
+---------------------------------------------------
+POST /api/v1/ask
+     Purpose: Standard RAG question answering with LLM
+     Authentication: None
+     Request Body:
+       {
+         "query": "string",
+         "top_k": 5,
+         "categories": ["cs.AI"],
+         "use_hybrid": true
+       }
+     Response: AskResponse with answer, sources, chunks_used, search_mode, trace_id
+     Features: Caching, Langfuse tracing, source citations
+     Example: curl -X POST http://localhost:8000/api/v1/ask \
+              -H "Content-Type: application/json" \
+              -d '{"query": "Explain attention mechanism"}'
+
+POST /api/v1/stream
+     Purpose: Streaming RAG responses with Server-Sent Events
+     Authentication: None
+     Request Body: Same as /api/v1/ask
+     Response: SSE stream with incremental answer chunks
+     Content-Type: text/event-stream
+     Features: Real-time streaming, same search logic as /ask
+     Example: curl -N http://localhost:8000/api/v1/stream \
+              -H "Content-Type: application/json" \
+              -d '{"query": "What is RAG?"}'
+
+Agentic RAG Routes (src/routers/agentic_ask.py)
+------------------------------------------------
+POST /api/v1/ask-agentic
+     Purpose: Intelligent RAG with LangGraph agent workflow
+     Authentication: None
+     Request Body:
+       {
+         "query": "string",
+         "top_k": 5,
+         "categories": ["cs.AI"],
+         "use_hybrid": true
+       }
+     Response: AgenticAskResponse with answer, sources, reasoning_steps,
+               retrieval_attempts, trace_id
+     Features:
+       - Guardrail validation (out-of-domain detection)
+       - Document grading (relevance scoring)
+       - Query rewriting (automatic refinement)
+       - Adaptive retrieval (multi-attempt with fallback)
+       - Reasoning transparency (step-by-step decisions)
+     Example: curl -X POST http://localhost:8000/api/v1/ask-agentic \
+              -H "Content-Type: application/json" \
+              -d '{"query": "How do transformers work?"}'
+
+POST /api/v1/feedback
+     Purpose: Submit user feedback for agentic RAG responses
+     Authentication: None
+     Request Body:
+       {
+         "trace_id": "string",
+         "score": 1.0,
+         "comment": "string (optional)"
+       }
+     Response: FeedbackResponse with success status
+     Features: Tracked in Langfuse for continuous improvement
+     Example: curl -X POST http://localhost:8000/api/v1/feedback \
+              -H "Content-Type: application/json" \
+              -d '{"trace_id": "abc123", "score": 0.8}'
+
+Interactive Documentation
+--------------------------
+GET  /docs
+     Purpose: Swagger UI for interactive API testing
+     URL: http://localhost:8000/docs
+
+GET  /redoc
+     Purpose: ReDoc alternative API documentation
+     URL: http://localhost:8000/redoc
+
+Route Guards and Middleware
+----------------------------
+No authentication middleware implemented (development mode).
+All routes are publicly accessible.
+
+Recommended production middleware:
+- API key validation
+- Rate limiting (per IP/user)
+- Request logging
+- CORS configuration
+- Request size limits
+
+Route Metadata
+--------------
+All routes include:
+- OpenAPI schema definitions
+- Pydantic request/response models
+- Type hints for IDE support
+- Automatic validation
+- Error handling with HTTP status codes
+
+
+Architectural Patterns
+======================
+
+Component Architecture Approach
+--------------------------------
+Layered Architecture (4 layers):
+
+1. Router Layer (src/routers/)
+   - FastAPI endpoint definitions
+   - Request/response validation
+   - HTTP status code management
+   - Minimal business logic
+
+2. Service Layer (src/services/)
+   - Business logic implementation
+   - External service integration
+   - Data transformation
+   - Error handling and recovery
+
+3. Repository Layer (src/repositories/)
+   - Database access abstraction
+   - CRUD operations
+   - Query construction
+   - Transaction management
+
+4. Model Layer (src/models/)
+   - SQLAlchemy ORM models
+   - Database schema definitions
+   - Relationships and constraints
+
+Factory Pattern
+---------------
+All services use factory functions for initialization:
+- Centralized dependency creation
+- Configuration injection
+- Easy testing with mocks
+- Consistent initialization pattern
+
+Example: src/services/opensearch/factory.py
+def make_opensearch_client() -> OpenSearchClient:
+    settings = get_settings()
+    return OpenSearchClient(
+        host=settings.opensearch.host,
+        index_name=settings.opensearch.index_name,
+        ...
+    )
+
+Dependency Injection Pattern
+-----------------------------
+FastAPI dependencies for service injection:
+- Type-safe service access
+- Automatic lifecycle management
+- Easy mocking for tests
+- Clear dependency graph
+
+Example: src/dependencies.py
+def get_opensearch_client(request: Request) -> OpenSearchClient:
+    return request.app.state.opensearch_client
+
+OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
+
+State Management Pattern
+-------------------------
+1. Application State (FastAPI app.state)
+   - Service instances stored at startup
+   - Shared across all requests
+   - Managed by lifespan context
+
+2. Agent State (LangGraph)
+   - Typed state classes with TypedDict
+   - Immutable state transitions
+   - Clear state flow through nodes
+
+3. Request State
+   - Pydantic models for validation
+   - No shared state between requests
+   - Thread-safe by design
+
+API Service Pattern
+-------------------
+Consistent client structure:
+1. Base client class with connection management
+2. Configuration via Pydantic settings
+3. Error handling with custom exceptions
+4. Retry logic for transient failures
+5. Health check methods
+
+Example: src/services/opensearch/client.py
+class OpenSearchClient:
+    def __init__(self, host: str, ...):
+        self.client = OpenSearch([host])
+
+    def health_check(self) -> bool:
+        try:
+            return self.client.ping()
+        except Exception:
+            return False
+
+Authentication Architecture
+----------------------------
+Current: No authentication (development)
+
+Recommended production architecture:
+1. API Gateway Layer
+   - API key validation
+   - JWT token verification
+   - Rate limiting per client
+
+2. Service Layer
+   - Service-to-service authentication
+   - Internal API keys
+   - Mutual TLS for inter-service communication
+
+3. Database Layer
+   - Connection pooling with credentials
+   - Row-level security (RLS)
+   - Encrypted connections
+
+Code Organization Principles
+-----------------------------
+1. Single Responsibility
+   - Each module has one clear purpose
+   - Services are focused and cohesive
+   - Clear separation of concerns
+
+2. Dependency Inversion
+   - Depend on abstractions, not implementations
+   - Factory pattern for object creation
+   - Interfaces defined by consumers
+
+3. Open/Closed Principle
+   - Services extensible without modification
+   - Configuration-driven behavior
+   - Plugin architecture for new features
+
+4. DRY (Don't Repeat Yourself)
+   - Common utilities in shared modules
+   - Reusable service clients
+   - Centralized configuration
+
+Security Practices Implemented
+-------------------------------
+1. Environment-Based Configuration
+   - Secrets in environment variables
+   - No hardcoded credentials
+   - .env files gitignored
+
+2. Input Validation
+   - Pydantic schemas for all inputs
+   - Type checking with MyPy
+   - Request size limits in OpenSearch
+
+3. Error Handling
+   - No sensitive data in error messages
+   - Proper HTTP status codes
+   - Logging without exposing secrets
+
+4. Dependency Security
+   - Locked dependency versions (uv.lock)
+   - Regular dependency updates
+   - Minimal dependency footprint
+
+5. Container Security
+   - Non-root user in Docker (where applicable)
+   - Minimal base images
+   - No secrets in Docker layers
+
+Performance Optimizations Applied
+----------------------------------
+1. Async/Await Pattern
+   - All I/O operations async
+   - Non-blocking request handling
+   - Concurrent request processing
+
+2. Connection Pooling
+   - PostgreSQL: 20 connection pool size
+   - Redis: Persistent connections
+   - OpenSearch: Connection reuse
+
+3. Caching Strategy
+   - Redis for exact-match queries
+   - 6-hour TTL with LRU eviction
+   - Cache-aside pattern
+
+4. Search Optimization
+   - Index mappings optimized for queries
+   - RRF pipeline for hybrid search
+   - Configurable result size
+
+5. LLM Optimization
+   - Minimal prompt engineering (80% reduction)
+   - Streaming responses for perceived speed
+   - Local LLM (no API latency)
+
+6. Document Processing
+   - Batch embedding generation
+   - Concurrent downloads (max 5)
+   - Sequential parsing (resource control)
+
+7. Resource Management
+   - Docker service memory limits
+   - OpenSearch JVM heap: 512MB
+   - Redis maxmemory: 256MB
+   - API workers: 4 uvicorn workers
+
+Testing Strategy
+----------------
+1. Unit Tests
+   - Individual service testing
+   - Mocked dependencies
+   - Fast execution
+
+2. Integration Tests
+   - Testcontainers for services
+   - Real database/OpenSearch
+   - End-to-end workflows
+
+3. Contract Testing
+   - Pydantic schema validation
+   - OpenAPI spec compliance
+   - Type checking with MyPy
+
+4. Manual Testing
+   - Jupyter notebooks per week
+   - Interactive API docs
+   - Gradio interface testing
+
+5. Monitoring & Observability
+   - Langfuse tracing for production insights
+   - Health check endpoints
+   - Service metrics
+
+
+API Integration Flows
+=====================
+
+Request/Response Cycle
+----------------------
+1. Client sends HTTP request to FastAPI endpoint
+2. FastAPI validates request with Pydantic schema
+3. Dependency injection provides service instances
+4. Router delegates to service layer
+5. Service performs business logic (search, LLM, etc.)
+6. Service returns data to router
+7. Router validates response with Pydantic schema
+8. FastAPI serializes response to JSON
+9. HTTP response sent to client
+
+Example Flow (Hybrid Search):
+Client → POST /api/v1/hybrid-search/
+       → HybridSearchRequest validation
+       → get_opensearch_client() dependency
+       → get_embeddings_service() dependency
+       → embeddings_service.embed_query()
+       → opensearch_client.search_unified()
+       → SearchResponse validation
+       → JSON response to client
+
+RAG Question Answering Flow
+----------------------------
+1. Client sends question to POST /api/v1/ask
+2. AskRequest validated (query, top_k, categories, use_hybrid)
+3. Check Redis cache for exact query match
+   - If hit: Return cached response (150-400x faster)
+   - If miss: Continue to step 4
+4. Start Langfuse trace for observability
+5. Generate query embedding (if use_hybrid=true)
+   - Call Jina AI API
+   - Fallback to BM25 if embedding fails
+6. Search OpenSearch with hybrid query
+   - Retrieve top_k chunks
+   - Extract arxiv_ids and sources
+7. Build LLM prompt with retrieved context
+   - System prompt from prompts/rag_system.txt
+   - User query + retrieved chunks
+8. Call Ollama LLM for answer generation
+   - Stream or standard response
+   - Extract answer text
+9. Cache response in Redis (6-hour TTL)
+10. End Langfuse trace with metadata
+11. Return AskResponse with answer, sources, trace_id
+
+Agentic RAG Flow (LangGraph)
+-----------------------------
+1. Client sends question to POST /api/v1/ask-agentic
+2. AskRequest validated
+3. Initialize LangGraph workflow state
+   - query, messages, documents, reasoning_steps, etc.
+4. Start guardrail_node
+   - LLM evaluates if query is in-domain (arXiv papers)
+   - Out-of-domain → out_of_scope_node → Return friendly rejection
+   - In-domain → Continue to retrieve_node
+5. retrieve_node
+   - Same hybrid search logic as /ask
+   - Retrieve top_k documents
+   - Add to state.documents
+6. grade_documents_node
+   - LLM grades each document for relevance
+   - Binary score: 1 (relevant) or 0 (not relevant)
+   - Filter documents with score=1
+   - If relevant docs exist → generate_answer_node
+   - If no relevant docs → rewrite_query_node
+7. rewrite_query_node (if needed)
+   - LLM reformulates query for better retrieval
+   - Update state.query with rewritten version
+   - Increment retrieval_attempts
+   - If attempts < max_attempts (3) → retrieve_node
+   - If attempts >= max_attempts → generate_answer_node (with best effort)
+8. generate_answer_node
+   - Build prompt with relevant documents
+   - Call Ollama LLM for answer
+   - Extract sources from documents
+   - Update state.answer and state.sources
+9. Return AgenticAskResponse
+   - answer, sources, reasoning_steps, retrieval_attempts, trace_id
+
+Telegram Bot Flow
+-----------------
+1. User sends message to Telegram bot
+2. python-telegram-bot receives update
+3. Bot identifies command or free-text message
+4. For /ask command or message:
+   - Extract question text
+   - Send "typing" indicator
+   - Call agentic RAG service internally
+   - Stream answer back to user
+   - Format sources as clickable links
+5. Error handling:
+   - Catch exceptions
+   - Send friendly error message
+   - Log error for debugging
+
+Error Handling Approach
+------------------------
+1. Validation Errors (422 Unprocessable Entity)
+   - Pydantic validation failures
+   - Invalid request parameters
+   - Example: Invalid arxiv_id format
+
+2. Service Unavailable (503)
+   - OpenSearch connection failure
+   - Redis connection failure
+   - Health check failures
+
+3. Client Errors (400 Bad Request)
+   - Malformed JSON
+   - Missing required fields
+
+4. Server Errors (500 Internal Server Error)
+   - Unexpected exceptions
+   - LLM failures
+   - Database errors
+
+5. Graceful Degradation
+   - Embeddings fail → Fallback to BM25
+   - Cache fail → Bypass cache, proceed with query
+   - Langfuse fail → Continue without tracing
+
+Interceptor Logic
+-----------------
+No explicit interceptors implemented.
+
+Middleware applied:
+- FastAPI automatic request validation
+- Exception handlers for custom errors
+- Lifespan context for service initialization
+
+Recommended production interceptors:
+- Request logging middleware
+- Authentication middleware
+- Rate limiting middleware
+- CORS middleware
+
+
+Key Dependencies & Purposes
+============================
+
+Core Service Dependencies
+-------------------------
+1. OpenSearch Client (src/services/opensearch/client.py)
+   Purpose: Unified search operations (BM25, vector, hybrid)
+   Key Methods:
+   - health_check(): Verify connectivity
+   - setup_indices(): Create hybrid index with mappings
+   - search_unified(): Execute search with multiple modes
+   - index_chunks(): Bulk index document chunks
+   Dependencies: opensearch-py, src/config.py
+
+2. Embeddings Service (src/services/embeddings/jina_client.py)
+   Purpose: Generate semantic embeddings for hybrid search
+   Key Methods:
+   - embed_query(): Single query embedding
+   - embed_batch(): Batch document embeddings
+   Dependencies: httpx, JINA_API_KEY
+
+3. Ollama Client (src/services/ollama/client.py)
+   Purpose: Local LLM inference for RAG
+   Key Methods:
+   - generate(): Standard text generation
+   - generate_stream(): Streaming text generation
+   Dependencies: httpx, OLLAMA_HOST, OLLAMA_MODEL
+
+4. Langfuse Tracer (src/services/langfuse/tracer.py)
+   Purpose: RAG pipeline observability and tracing
+   Key Methods:
+   - trace_search(): Trace search operations
+   - trace_embedding(): Trace embedding generation
+   - trace_generation(): Trace LLM generation
+   Dependencies: langfuse SDK, Langfuse server
+
+5. Cache Client (src/services/cache/client.py)
+   Purpose: Redis-based query response caching
+   Key Methods:
+   - get(): Retrieve cached response
+   - set(): Store response with TTL
+   - health_check(): Verify Redis connectivity
+   Dependencies: redis-py, REDIS__HOST
+
+6. arXiv Client (src/services/arxiv/client.py)
+   Purpose: Fetch paper metadata and PDFs from arXiv API
+   Key Methods:
+   - search(): Query arXiv API with rate limiting
+   - download_pdf(): Download paper PDF with retries
+   Dependencies: requests, xml parsing
+
+7. PDF Parser (src/services/pdf_parser/docling.py)
+   Purpose: Extract structured text from scientific PDFs
+   Key Methods:
+   - parse(): Parse PDF to markdown with sections
+   Dependencies: docling library
+
+8. Text Chunker (src/services/indexing/text_chunker.py)
+   Purpose: Section-based intelligent document chunking
+   Key Methods:
+   - chunk_document(): Split text into overlapping chunks
+   Dependencies: None (pure Python)
+
+9. Hybrid Indexer (src/services/indexing/hybrid_indexer.py)
+   Purpose: Orchestrate chunking and indexing pipeline
+   Key Methods:
+   - index_paper(): Full pipeline for single paper
+   Dependencies: TextChunker, EmbeddingsService, OpenSearchClient
+
+10. Agentic RAG Workflow (src/services/agents/agentic_rag.py)
+    Purpose: LangGraph-based intelligent retrieval orchestration
+    Key Methods:
+    - ask(): Execute full agentic workflow
+    Dependencies: LangGraph, LangChain, all agent nodes
+
+Agent Node Dependencies (Week 7)
+---------------------------------
+1. Guardrail Node (src/services/agents/nodes/guardrail_node.py)
+   Purpose: Validate query is in-domain for arXiv papers
+   Output: Decision to proceed or reject
+
+2. Retrieve Node (src/services/agents/nodes/retrieve_node.py)
+   Purpose: Execute hybrid search for relevant documents
+   Output: List of retrieved documents with metadata
+
+3. Grade Documents Node (src/services/agents/nodes/grade_documents_node.py)
+   Purpose: Evaluate document relevance with LLM
+   Output: Filtered list of relevant documents
+
+4. Rewrite Query Node (src/services/agents/nodes/rewrite_query_node.py)
+   Purpose: Reformulate query for better retrieval
+   Output: Improved query string
+
+5. Generate Answer Node (src/services/agents/nodes/generate_answer_node.py)
+   Purpose: Create final answer from relevant documents
+   Output: Answer text with sources
+
+6. Out of Scope Node (src/services/agents/nodes/out_of_scope_node.py)
+   Purpose: Handle out-of-domain queries gracefully
+   Output: Friendly rejection message
+
+Utility Services
+----------------
+1. Metadata Fetcher (src/services/metadata_fetcher.py)
+   Purpose: Orchestrate full ingestion pipeline
+   Dependencies: ArxivClient, PDFParser, Database
+
+2. Database Factory (src/db/factory.py)
+   Purpose: Database connection and session management
+   Dependencies: SQLAlchemy, PostgreSQL
+
+3. Configuration Service (src/config.py)
+   Purpose: Environment-based settings with validation
+   Dependencies: Pydantic Settings
+
+4. Telegram Bot (src/services/telegram/bot.py)
+   Purpose: Async Telegram bot with command handlers
+   Dependencies: python-telegram-bot, AgenticRAG
+
+
+Application Entry Flow
+======================
+
+Initialization Sequence
+-----------------------
+1. Python interpreter starts: python -m uvicorn src.main:app
+2. Import src.main module
+3. Define lifespan context manager
+4. Create FastAPI app instance with lifespan
+5. Include routers (ping, hybrid_search, ask, stream, agentic_ask)
+6. Uvicorn starts ASGI server on port 8000
+
+Application Bootstrap Process
+------------------------------
+On startup (lifespan __aenter__):
+
+1. Load configuration from environment
+   settings = get_settings()
+   app.state.settings = settings
+
+2. Initialize database connection
+   database = make_database()
+   app.state.database = database
+
+3. Connect to OpenSearch
+   opensearch_client = make_opensearch_client()
+   app.state.opensearch_client = opensearch_client
+
+4. Setup OpenSearch indices
+   setup_results = opensearch_client.setup_indices(force=False)
+   - Creates hybrid index if not exists
+   - Configures RRF pipeline for hybrid search
+
+5. Initialize service clients
+   app.state.arxiv_client = make_arxiv_client()
+   app.state.pdf_parser = make_pdf_parser_service()
+   app.state.embeddings_service = make_embeddings_service()
+   app.state.ollama_client = make_ollama_client()
+   app.state.langfuse_tracer = make_langfuse_tracer()
+   app.state.cache_client = make_cache_client(settings)
+
+6. Initialize Telegram bot (Week 7)
+   telegram_service = make_telegram_service(...)
+   if telegram_service:
+       await telegram_service.start()
+
+7. Log startup completion
+   logger.info("API ready")
+
+8. Yield control to FastAPI (application runs)
+
+On shutdown (lifespan __aexit__):
+
+1. Stop Telegram bot
+   if hasattr(app.state, "telegram_service"):
+       await app.state.telegram_service.stop()
+
+2. Close database connections
+   database.teardown()
+
+3. Log shutdown completion
+   logger.info("API shutdown complete")
+
+Route Resolution Flow
+---------------------
+1. Client sends HTTP request to http://localhost:8000/api/v1/ask
+2. Uvicorn receives request and passes to FastAPI
+3. FastAPI matches route: POST /api/v1/ask → ask_router
+4. FastAPI resolves dependencies for endpoint:
+   - OpenSearchDep → get_opensearch_client(request)
+   - EmbeddingsDep → get_embeddings_service(request)
+   - OllamaDep → get_ollama_client(request)
+   - LangfuseDep → get_langfuse_tracer(request)
+   - CacheDep → get_cache_client(request)
+5. FastAPI validates request body with AskRequest schema
+6. Call endpoint function: ask_question(request, ...)
+7. Endpoint executes business logic
+8. Return AskResponse (Pydantic model)
+9. FastAPI serializes response to JSON
+10. Uvicorn sends HTTP response to client
+
+Component Mounting Order
+------------------------
+FastAPI components mount in this order:
+
+1. App creation (with lifespan)
+2. Router inclusion:
+   - ping.router (prefix="/api/v1")
+   - hybrid_search.router (prefix="/api/v1")
+   - ask_router (prefix="/api/v1")
+   - stream_router (prefix="/api/v1")
+   - agentic_ask.router (no prefix, already has /api/v1)
+
+3. Middleware (default FastAPI middleware):
+   - ServerErrorMiddleware
+   - ValidationErrorMiddleware
+   - CORS middleware (if configured)
+
+4. Exception handlers (default FastAPI):
+   - RequestValidationError → 422
+   - HTTPException → status code from exception
+   - Generic Exception → 500
+
+Service Dependencies Graph
+---------------------------
+┌─────────────┐
+│  FastAPI    │
+└──────┬──────┘
+       │
+       ├─► OpenSearchClient ──┬─► OpenSearch 2.19
+       │                      └─► EmbeddingsService ──► Jina AI
+       │
+       ├─► OllamaClient ──────► Ollama LLM
+       │
+       ├─► LangfuseTracer ────┬─► Langfuse Server
+       │                      ├─► ClickHouse
+       │                      └─► PostgreSQL (Langfuse)
+       │
+       ├─► CacheClient ───────► Redis
+       │
+       ├─► ArxivClient ───────► arXiv API
+       │
+       ├─► PDFParser ─────────► Local filesystem
+       │
+       ├─► Database ──────────► PostgreSQL (App)
+       │
+       ├─► AgenticRAG ────────┬─► LangGraph
+       │                      ├─► OpenSearchClient
+       │                      ├─► EmbeddingsService
+       │                      ├─► OllamaClient
+       │                      └─► LangfuseTracer
+       │
+       └─► TelegramService ───┬─► Telegram Bot API
+                              └─► AgenticRAG
+
+
+Deployment Checklist
+====================
+
+Pre-Deployment Checks
+---------------------
+□ Configuration validated
+  - Copy .env.example to .env
+  - Set JINA_API_KEY (required for Week 4+)
+  - Set TELEGRAM__BOT_TOKEN (optional, Week 7)
+  - Set LANGFUSE keys (optional, Week 6+)
+  - Review all OPENSEARCH__ settings
+  - Review all OLLAMA settings
+  - Verify POSTGRES_DATABASE_URL format
+
+□ Dependencies installed
+  - uv sync completed successfully
+  - pyproject.toml and uv.lock in sync
+  - No dependency conflicts
+
+□ Code quality checks passed
+  - make format (no changes)
+  - make lint (no errors)
+  - uv run mypy src/ (type check passed)
+
+□ Tests passed
+  - make test (all tests green)
+  - Integration tests with testcontainers passed
+
+□ Docker images built
+  - docker compose build successful
+  - No build errors or warnings
+
+□ OpenSearch mappings configured
+  - Hybrid index schema reviewed
+  - RRF pipeline configured
+  - Vector dimension matches embeddings (1024)
+
+□ Ollama model available
+  - docker exec -it rag-ollama ollama list
+  - llama3.2:1b downloaded (or configured model)
+
+Development Deployment
+----------------------
+1. Start infrastructure services first
+   docker compose up -d postgres opensearch redis
+
+2. Wait for health checks (30-60 seconds)
+   docker compose ps
+   # Ensure all show "healthy"
+
+3. Start remaining services
+   docker compose up -d
+
+4. Verify all services healthy
+   make health
+   # Check: postgres, opensearch, ollama, redis, api
+
+5. Check API documentation
+   Open: http://localhost:8000/docs
+   Verify all endpoints visible
+
+6. Test basic endpoints
+   curl http://localhost:8000/api/v1/health
+   curl http://localhost:8000/api/v1/ping
+
+7. Pull Ollama model (first time)
+   docker exec -it rag-ollama ollama pull llama3.2:1b
+
+8. Run sample search query
+   curl -X POST http://localhost:8000/api/v1/hybrid-search/ \
+        -H "Content-Type: application/json" \
+        -d '{"query": "transformer", "use_hybrid": false}'
+
+9. Test RAG endpoint
+   curl -X POST http://localhost:8000/api/v1/ask \
+        -H "Content-Type: application/json" \
+        -d '{"query": "What is attention?"}'
+
+10. Launch Gradio interface
+    uv run python gradio_launcher.py
+    Open: http://localhost:7861
+
+11. Check monitoring dashboards
+    - Langfuse: http://localhost:3001
+    - Airflow: http://localhost:8080
+    - OpenSearch Dashboards: http://localhost:5601
+
+Staging Deployment
+------------------
+1. Update environment configuration
+   ENVIRONMENT=staging
+   DEBUG=false
+   POSTGRES_DATABASE_URL=<staging-db-url>
+   OPENSEARCH__HOST=<staging-opensearch-url>
+
+2. Review resource limits
+   docker compose.yml:
+   - Adjust memory limits for production load
+   - Increase OpenSearch heap if needed
+   - Increase Redis maxmemory if needed
+
+3. Enable production monitoring
+   LANGFUSE_ENABLED=true
+   LANGFUSE_HOST=<staging-langfuse-url>
+
+4. Run database migrations
+   uv run alembic upgrade head
+
+5. Deploy with production-like settings
+   docker compose up -d --build
+
+6. Run smoke tests
+   - Test all API endpoints
+   - Verify search returns results
+   - Verify RAG generates answers
+   - Check monitoring data in Langfuse
+
+7. Load test (optional)
+   - Use locust or k6
+   - Test concurrent requests
+   - Monitor resource usage
+
+8. Validate logging
+   docker compose logs -f
+   # Verify structured logging
+   # No sensitive data in logs
+
+Production Deployment
+---------------------
+1. Security hardening
+   □ Change default passwords in .env:
+     - POSTGRES_PASSWORD
+     - LANGFUSE_NEXTAUTH_SECRET (min 32 chars)
+     - LANGFUSE_SALT (min 32 chars)
+     - LANGFUSE_ENCRYPTION_KEY (64 hex chars)
+     - REDIS__PASSWORD
+     - LANGFUSE_REDIS_PASSWORD
+   □ Use secrets management (AWS Secrets Manager, HashiCorp Vault)
+   □ Enable HTTPS with reverse proxy (nginx, Traefik)
+   □ Restrict network access (VPC, security groups)
+   □ Enable API rate limiting
+   □ Implement authentication (API keys, OAuth)
+
+2. Performance tuning
+   □ Increase connection pool sizes
+   □ Adjust uvicorn workers (4-8 recommended)
+   □ Scale OpenSearch cluster (multi-node)
+   □ Configure Redis persistence (AOF)
+   □ Optimize Ollama model selection
+
+3. Monitoring setup
+   □ Configure external Langfuse instance
+   □ Set up alerting (PagerDuty, Slack)
+   □ Enable health check monitoring (Datadog, Prometheus)
+   □ Configure log aggregation (ELK, CloudWatch)
+
+4. Backup strategy
+   □ Automated PostgreSQL backups (daily)
+   □ OpenSearch snapshot configuration
+   □ Redis persistence enabled
+   □ Document backup locations and procedures
+
+5. Disaster recovery
+   □ Document rollback procedures
+   □ Test database restore process
+   □ Maintain previous Docker images
+   □ Have emergency contact list
+
+6. Deploy to production
+   ENVIRONMENT=production
+   DEBUG=false
+   docker compose up -d --build
+
+7. Post-deployment validation
+   □ Health checks passing
+   □ All services responsive
+   □ Search queries returning results
+   □ RAG generating answers
+   □ Monitoring data flowing to Langfuse
+   □ No errors in logs
+
+8. Monitor for 24-48 hours
+   □ Watch error rates
+   □ Monitor latency metrics
+   □ Check resource utilization
+   □ Verify cache hit rates
+
+Rollback Procedures
+-------------------
+1. Stop current deployment
+   docker compose down
+
+2. Revert to previous configuration
+   git checkout <previous-commit>
+
+3. Rebuild with previous version
+   docker compose up -d --build
+
+4. Verify rollback successful
+   make health
+   # Test critical endpoints
+
+5. Investigate failure
+   docker compose logs -f
+   # Review error logs
+   # Check Langfuse traces
+
+Week-Specific Deployment Notes
+-------------------------------
+Week 1: Infrastructure only
+  - No data ingestion
+  - OpenSearch empty
+  - Search endpoints return empty results
+
+Week 2: Add data ingestion
+  - Run Airflow DAG manually first time
+  - Wait for papers to be ingested
+  - Verify PostgreSQL has records
+
+Week 3: Add search
+  - Ensure OpenSearch index created
+  - Test BM25 search
+  - Verify results have scores
+
+Week 4: Add embeddings
+  - JINA_API_KEY required
+  - Test hybrid search
+  - Compare BM25 vs hybrid results
+
+Week 5: Add LLM
+  - Pull Ollama model first
+  - Test /ask endpoint
+  - Launch Gradio interface
+
+Week 6: Add monitoring
+  - Configure Langfuse keys
+  - Verify traces appear in dashboard
+  - Test cache performance
+
+Week 7: Add agentic RAG
+  - Test /ask-agentic endpoint
+  - Configure TELEGRAM__BOT_TOKEN
+  - Start Telegram bot
+  - Test bot commands
+
+
+Service URLs (Default Configuration)
+=====================================
+FastAPI Swagger UI:      http://localhost:8000/docs
+FastAPI ReDoc:           http://localhost:8000/redoc
+FastAPI Health:          http://localhost:8000/api/v1/health
+Gradio Interface:        http://localhost:7861
+Langfuse Dashboard:      http://localhost:3001
+Airflow Web UI:          http://localhost:8080
+OpenSearch:              http://localhost:9200
+OpenSearch Dashboards:   http://localhost:5601
+PostgreSQL:              postgresql://localhost:5432/rag_db
+Redis:                   redis://localhost:6379
+Ollama API:              http://localhost:11434
+
+
+Project Evolution Summary
+==========================
+Week 1: Infrastructure foundation (Docker, FastAPI, PostgreSQL, OpenSearch, Ollama)
+Week 2: Data ingestion pipeline (arXiv API, Docling PDF parser, Airflow workflows)
+Week 3: BM25 keyword search (OpenSearch mappings, query DSL, relevance scoring)
+Week 4: Hybrid search (Jina embeddings, vector search, RRF fusion, chunking)
+Week 5: Complete RAG (Ollama LLM, streaming, optimized prompts, Gradio UI)
+Week 6: Production ready (Langfuse tracing, Redis caching, observability)
+Week 7: Agentic RAG (LangGraph workflow, Telegram bot, intelligent retrieval)
+
+
+Documentation Version
+=====================
+Generated: 2025-12-01
+Project Version: 0.1.0
+Documentation Covers: Complete RAG project (Weeks 1-7)
+Primary Implementation: /main directory (Week 7)

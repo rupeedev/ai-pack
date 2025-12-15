@@ -1,0 +1,147 @@
+Pre-Read (Start Here)
+
+Before watching the Week 1 videos, please go through the following resources.
+They will give you the right mental model for how real production RAG systems are built.
+
+
+1️⃣ Week 1 Blog: The Infrastructure That Powers RAG Systems
+
+This explains why we start with infrastructure before touching embeddings, chunking, or LLMs.
+Read it here:
+https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag
+
+2️⃣ Week 1 Code Repository
+
+Full Week 1 codebase with Docker, FastAPI, PostgreSQL, OpenSearch, and Airflow setup:
+https://github.com/jamwithai/arxiv-paper-curator
+
+Navigate to:
+docker-compose.yml - complete infra stack
+src/ - API structure (routers, services, repositories)
+notebooks/week1/ - interactive setup walkthrough
+
+3️⃣ What You Should Know Before the Videos
+
+RAG doesn’t start with embeddings - it starts with infrastructure
+Week 1’s goal: get all core services running cleanly
+If your Docker or service health is unstable → RAG will break later
+You will build:
+FastAPI backend
+PostgreSQL + migrations
+OpenSearch cluster
+Airflow scheduler
+Ollama LLM service
+
+This is the foundation the entire 6-week system relies on, so please complete the pre-read before starting the videos
+
+
+
+==========================
+
+🏗️ Architecture Overview
+
+  The Week 1 RAG system uses a layered architecture:
+  FastAPI Routers (API Layer)
+      ↓
+  Dependency Injection
+      ↓
+  Repository/Service Layer
+      ↓
+  Database/External Services
+
+  📁 Key Components
+
+  1. Main Entry Point
+
+  src/main.py:1 - FastAPI app with lifespan management for service initialization
+
+  2. Database Layer
+
+  - Model: src/models/paper.py:1 - Paper schema with arXiv metadata
+  - Repository: src/repositories/paper.py:1 - CRUD operations
+  - Factory: src/db/factory.py:1 - Database abstraction
+
+  3. API Endpoints
+
+  - src/routers/ping.py:1 - Health checks (GET /ping, /health)
+  - src/routers/papers.py:1 - Paper operations (GET /papers/{arxiv_id})
+  - src/routers/ask.py:1 - Q&A endpoint (POST /ask) - Mock only in Week 1
+
+  4. Configuration
+
+  src/config.py:1 - Pydantic settings loaded from .env
+
+  🔄 Data Flow Example
+
+  HTTP GET /papers/2401.00001
+      ↓
+  Router (papers.py) → Inject DB session
+      ↓
+  PaperRepository.get_by_arxiv_id()
+      ↓
+  SQLAlchemy query → PostgreSQL
+      ↓
+  PaperResponse schema → JSON response
+
+  🐳 Docker Services
+
+  | Service               | Port  | Purpose                         |
+  |-----------------------|-------|---------------------------------|
+  | api                   | 8000  | FastAPI application             |
+  | postgres              | 5432  | Paper metadata storage          |
+  | opensearch            | 9200  | Search engine (used Week 3+)    |
+  | opensearch-dashboards | 5601  | Search UI                       |
+  | airflow               | 8080  | Workflow automation             |
+  | ollama                | 11434 | Local LLM server (used Week 5+) |
+
+  ✅ Week 1 Status
+
+  Fully Implemented:
+  - ✅ FastAPI app with health monitoring
+  - ✅ PostgreSQL database with Paper model
+  - ✅ Repository pattern for data access
+  - ✅ Docker Compose orchestration
+  - ✅ Development environment (UV, Ruff, MyPy, Pytest)
+
+  Placeholders (Future Weeks):
+  - 🔄 PDF parsing service (Week 2)
+  - 🔄 OpenSearch integration (Week 3)
+  - 🔄 LLM integration (Week 5)
+  - 🔄 Real Q&A functionality (Week 5)
+
+  🎯 Files to Read First
+
+  1. README.md - Project overview
+  2. compose.yml - Infrastructure setup
+  3. src/main.py - App initialization
+  4. src/models/paper.py - Database schema
+  5. src/routers/ping.py - Simple endpoint example
+  6. src/config.py - Configuration patterns
+
+  💡 Design Patterns Used
+
+  - Repository Pattern - Data access abstraction
+  - Factory Pattern - Database creation
+  - Dependency Injection - FastAPI dependencies
+  - Context Managers - Database sessions with auto-cleanup
+  - Async/Await - Non-blocking operations
+
+  🚀 Quick Commands
+
+  # Check if everything is running
+  make health
+
+  # View API documentation
+  open http://localhost:8000/docs
+
+  # View logs
+  make logs
+
+  # Run tests
+  make test
+
+  📍 Your Current Directory
+
+  /Users/rupeshpanwar/Documents/AI-Projects/RAG/week-1
+
+  All services are running! You can start exploring the code or test the API at http://localhost:8000/docs

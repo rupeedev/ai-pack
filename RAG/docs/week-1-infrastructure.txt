@@ -1,0 +1,1620 @@
+WEEK 1 - RAG INFRASTRUCTURE FOUNDATION - TECHNICAL DOCUMENTATION
+=====================================================================
+
+TL;DR
+=====
+Week 1 establishes the infrastructure foundation for a production-grade RAG (Retrieval-Augmented
+Generation) system called "arXiv Paper Curator". This is a multi-service architecture featuring
+FastAPI REST API (8000), PostgreSQL 16 database (5432), OpenSearch 2.19 hybrid search engine
+(9200/5601), Apache Airflow 2.10 workflow orchestrator (8080), and Ollama 0.11 local LLM server
+(11434). The project uses modern Python tooling (UV, Ruff, MyPy) and containerized deployment via
+Docker Compose. Core capabilities include health monitoring, database connectivity, and foundational
+API endpoints. Services communicate via Docker bridge network with dependency-aware startup sequencing.
+This infrastructure serves as the base for future weeks where data ingestion, hybrid search, and full
+RAG capabilities will be added. Total: 5 services, 17 Python dependencies, 8 dev dependencies.
+
+
+PROJECT OVERVIEW
+================
+
+Application Name: moai-zero-to-rag (Mother-of-AI Phase-1-Zero to RAG)
+Version: 0.1.0
+Purpose: Week 1 infrastructure foundation for building production-grade RAG system
+Target Use Case: Learning platform for AI engineers to build modern RAG architectures
+
+Description:
+------------
+This is the first week of a 7-week learning project that teaches production RAG system development.
+Week 1 focuses exclusively on infrastructure setup with zero RAG functionality - it establishes the
+multi-service architecture, health monitoring, database connectivity, and development toolchain that
+subsequent weeks will build upon. The system will eventually become an intelligent research assistant
+that automatically fetches arXiv papers, understands their content, and answers research questions.
+
+Quick Statistics:
+-----------------
+- Production Dependencies: 17 packages
+- Development Dependencies: 8 packages
+- Docker Services: 5 (API, PostgreSQL, OpenSearch+Dashboards, Airflow, Ollama)
+- API Endpoints: 3 health/ping endpoints, 1 paper lookup endpoint (placeholder)
+- Database Models: 1 (Paper model for future weeks)
+- Python Version: 3.12+
+- Target Environments: Development (Week 1 scope)
+
+
+TECHNOLOGY STACK
+================
+
+Core Framework:
+---------------
+- FastAPI 0.115.12+ - Async REST API framework with automatic OpenAPI docs
+- Uvicorn 0.34.0+ - ASGI server with multi-worker support
+- Python 3.12+ - Required version for modern async features
+
+Database & ORM:
+---------------
+- PostgreSQL 16 (Alpine) - Primary metadata and content storage
+- SQLAlchemy 2.0.0+ - ORM with async support
+- Alembic 1.13.3+ - Database migration management
+- Psycopg2-binary 2.9.10+ - PostgreSQL adapter
+
+Search Engine:
+--------------
+- OpenSearch 2.19.0 - Hybrid search engine (BM25 + vector search capabilities)
+- OpenSearch Dashboards 2.19.0 - Search analytics and visualization UI
+- Opensearch-py 3.0.0+ - Python client library
+
+Workflow Orchestration:
+-----------------------
+- Apache Airflow 2.10.3 - DAG-based workflow automation
+- LocalExecutor - Single-machine task execution (Week 1 scope)
+
+LLM Infrastructure:
+-------------------
+- Ollama 0.11.2 - Local LLM model serving
+- Models: llama3.2:1b, gpt-oss:20b (configurable)
+
+Configuration & Validation:
+---------------------------
+- Pydantic 2.11.3+ - Data validation and settings management
+- Pydantic-settings 2.8.1+ - Environment variable parsing
+
+HTTP Clients:
+-------------
+- Requests 2.32.3+ - Synchronous HTTP (used in Airflow DAGs)
+- HTTPX 0.28.1+ - Async HTTP client (used in FastAPI services)
+
+Development Tools:
+------------------
+- UV - Fast Python package manager (replaces pip/poetry)
+- Ruff 0.11.5+ - Extremely fast Python linter and formatter
+- MyPy 1.15.0+ - Static type checker
+- Pre-commit 4.2.0+ - Git hook manager for code quality
+
+Testing Stack:
+--------------
+- Pytest 8.3.5+ - Test framework with async support
+- Pytest-cov 6.1.1+ - Coverage reporting
+- Pytest-aiohttp 1.1.0+ - Async HTTP testing
+- Pytest-mock 3.14.0+ - Mocking utilities
+- Testcontainers 4.10.0+ - Docker-based integration testing
+- Polyfactory 2.21.0+ - Test data generation
+
+Development Environment:
+------------------------
+- Jupyter 1.1.1+ / Notebook 7.4.4+ - Interactive learning notebooks
+- Docker Compose - Multi-container orchestration
+- Make - Build automation via Makefile
+
+
+PROJECT STRUCTURE
+=================
+
+Complete Directory Tree:
+------------------------
+week-1/
+├── src/                           # Main application code
+│   ├── main.py                    # FastAPI application entry point
+│   ├── config.py                  # Environment configuration management
+│   ├── database.py                # Database session management (legacy)
+│   ├── dependencies.py            # FastAPI dependency injection
+│   ├── exceptions.py              # Custom exception definitions
+│   ├── middlewares.py             # Request/response middleware
+│   │
+│   ├── db/                        # Database abstraction layer
+│   │   ├── __init__.py
+│   │   ├── factory.py             # Database instance factory
+│   │   └── interfaces/
+│   │       ├── base.py            # Abstract database interface
+│   │       └── postgresql.py     # PostgreSQL implementation
+│   │
+│   ├── models/                    # SQLAlchemy ORM models
+│   │   ├── __init__.py
+│   │   └── paper.py               # Paper metadata model (UUID, arxiv_id, etc.)
+│   │
+│   ├── schemas/                   # Pydantic validation schemas
+│   │   ├── __init__.py
+│   │   ├── health.py              # Health check response schemas
+│   │   ├── paper.py               # Paper request/response schemas
+│   │   └── ask.py                 # Placeholder for future RAG queries
+│   │
+│   ├── routers/                   # API endpoint definitions
+│   │   ├── __init__.py
+│   │   ├── ping.py                # Health check endpoints (/ping, /health)
+│   │   ├── papers.py              # Paper lookup endpoint (placeholder)
+│   │   └── ask.py                 # Placeholder for future RAG endpoints
+│   │
+│   ├── repositories/              # Data access layer
+│   │   ├── __init__.py
+│   │   └── paper.py               # Paper CRUD operations
+│   │
+│   └── services/                  # Business logic and external integrations
+│       ├── __init__.py
+│       └── ollama/
+│           ├── __init__.py
+│           └── client.py          # Ollama health check client (minimal Week 1)
+│
+├── airflow/                       # Airflow configuration
+│   ├── dags/
+│   │   └── hello_world_dag.py     # Test DAG with service connectivity checks
+│   ├── Dockerfile                 # Custom Airflow image with dependencies
+│   ├── entrypoint.sh              # Airflow initialization script
+│   └── requirements-airflow.txt   # Airflow-specific Python dependencies
+│
+├── notebooks/                     # Learning materials
+│   └── week1/
+│       └── week1_setup.ipynb      # Complete Week 1 setup guide
+│
+├── tests/                         # Comprehensive test suite
+│   ├── __init__.py
+│   ├── conftest.py                # Pytest fixtures and configuration
+│   ├── api/                       # API integration tests
+│   │   ├── __init__.py
+│   │   └── conftest.py            # API test fixtures
+│   └── unit/                      # Unit tests
+│       └── __init__.py
+│
+├── static/                        # Static assets
+│   ├── week1_infra_setup.png      # Infrastructure diagram
+│   └── mother_of_ai_project_rag_architecture.gif
+│
+├── compose.yml                    # Docker Compose service definitions
+├── Dockerfile                     # FastAPI application container
+├── Makefile                       # Build and development automation
+├── pyproject.toml                 # Python project configuration (UV)
+├── uv.lock                        # Dependency lock file
+├── .env.example                   # Environment variable template
+├── .gitignore                     # Git ignore patterns
+├── .pre-commit-config.yaml        # Pre-commit hooks configuration
+├── LICENSE                        # MIT License
+└── README.md                      # Project documentation
+
+Key Configuration Files:
+------------------------
+- compose.yml: Defines 5 services with health checks and dependencies
+- pyproject.toml: UV package configuration with ruff/pytest settings
+- .env.example: Environment variable templates for all services
+- Makefile: 12 automation commands for common development tasks
+- .pre-commit-config.yaml: Ruff formatter, linter, and MyPy type checks
+
+Purpose of Major Directories:
+------------------------------
+src/routers/         - API endpoint definitions using FastAPI router pattern
+src/services/        - Business logic and external service integrations
+src/repositories/    - Database access layer following repository pattern
+src/models/          - SQLAlchemy ORM models for database tables
+src/schemas/         - Pydantic schemas for request/response validation
+src/db/              - Database abstraction layer with pluggable backends
+airflow/dags/        - Workflow definitions for data ingestion (future weeks)
+tests/               - Unit and integration tests with testcontainers
+notebooks/           - Interactive Jupyter learning materials
+
+Naming Conventions:
+-------------------
+- Files: snake_case (e.g., paper.py, hello_world_dag.py)
+- Classes: PascalCase (e.g., Paper, PaperRepository, OllamaClient)
+- Functions: snake_case (e.g., get_settings, health_check)
+- Constants: UPPER_SNAKE_CASE (e.g., AIRFLOW_HOME, POSTGRES_DATABASE_URL)
+- Modules: snake_case with descriptive names
+
+
+MAIN FEATURES & MODULES
+========================
+
+Feature 1: Health Monitoring System
+------------------------------------
+Description: Comprehensive health check system for monitoring service availability
+Key Components:
+  - src/routers/ping.py - Ping and health check endpoints
+  - src/schemas/health.py - HealthResponse, ServiceStatus schemas
+  - src/services/ollama/client.py - Ollama health check implementation
+Routes:
+  - GET /api/v1/ping - Simple connectivity test
+  - GET /api/v1/health - Multi-service health check (database, Ollama)
+Implementation Details:
+  - Tests PostgreSQL connectivity with SELECT 1 query
+  - Tests Ollama service via /api/tags endpoint
+  - Returns degraded status if any service unhealthy
+  - Used by Docker healthcheck and load balancers
+
+Feature 2: FastAPI Application Framework
+-----------------------------------------
+Description: Async REST API with automatic OpenAPI documentation
+Key Components:
+  - src/main.py - Application entry point with lifespan management
+  - src/dependencies.py - Dependency injection for database/settings
+  - src/middlewares.py - Request/response processing middleware
+Routes:
+  - /api/v1/* - All API endpoints under versioned prefix
+  - /docs - Swagger UI interactive documentation
+  - /redoc - ReDoc alternative documentation
+Implementation Details:
+  - Async lifespan context manager for startup/shutdown
+  - Centralized settings via Pydantic Settings
+  - Database connection managed in app.state
+  - Placeholders for pdf_parser, opensearch, llm services (future weeks)
+
+Feature 3: Database Infrastructure
+-----------------------------------
+Description: PostgreSQL database with ORM and abstraction layer
+Key Components:
+  - src/db/interfaces/postgresql.py - PostgreSQL implementation
+  - src/db/factory.py - Database instance factory
+  - src/models/paper.py - Paper metadata model
+  - src/repositories/paper.py - Paper CRUD operations
+Database Models:
+  - Paper: id (UUID), arxiv_id (unique), title, authors (JSON), abstract,
+           categories (JSON), published_date, pdf_url, created_at, updated_at
+Implementation Details:
+  - SQLAlchemy 2.0 with Base declarative model
+  - Connection pooling: pool_size=20, max_overflow=0
+  - Session management via context manager
+  - Repository pattern for data access abstraction
+
+Feature 4: Paper Metadata API (Placeholder)
+--------------------------------------------
+Description: REST endpoint for retrieving paper details by arXiv ID
+Key Components:
+  - src/routers/papers.py - Paper lookup endpoint
+  - src/schemas/paper.py - PaperBase, PaperCreate, PaperResponse schemas
+  - src/repositories/paper.py - Database access methods
+Routes:
+  - GET /api/v1/papers/{arxiv_id} - Get paper by arXiv ID (regex validated)
+Implementation Details:
+  - ArXiv ID validation: regex pattern ^\d{4}\.\d{4,5}(v\d+)?$
+  - 404 error if paper not found
+  - Response includes full paper metadata + timestamps
+  - Placeholder for Week 2 when data ingestion is implemented
+
+Feature 5: Configuration Management
+------------------------------------
+Description: Centralized environment-based configuration
+Key Components:
+  - src/config.py - Settings class with Pydantic validation
+  - .env.example - Environment variable template
+Implementation Details:
+  - Settings fields: app_version, debug, environment, service_name
+  - PostgreSQL: database_url, echo_sql, pool_size, max_overflow
+  - OpenSearch: opensearch_host
+  - Ollama: host, models (comma-separated list), default_model, timeout
+  - Field validators for parsing comma-separated model lists
+  - Frozen settings to prevent runtime modification
+
+Feature 6: Workflow Orchestration (Airflow)
+--------------------------------------------
+Description: DAG-based workflow automation for future data pipelines
+Key Components:
+  - airflow/dags/hello_world_dag.py - Test DAG for Week 1
+  - airflow/Dockerfile - Custom Airflow image
+  - airflow/entrypoint.sh - Database initialization and service startup
+Routes:
+  - http://localhost:8080 - Airflow web UI
+Implementation Details:
+  - LocalExecutor for single-machine execution
+  - Test DAG with 2 tasks: hello_world, check_services
+  - Service connectivity checks to API, database
+  - Manual trigger only (schedule=None)
+  - Tags: week1, testing
+  - Default credentials: admin/admin
+
+Feature 7: Development Toolchain
+---------------------------------
+Description: Automated code quality and testing tools
+Key Components:
+  - .pre-commit-config.yaml - Git hooks for formatting/linting
+  - Makefile - Development command automation
+  - pyproject.toml - Tool configurations
+Implementation Details:
+  - Ruff: Line length 130, import sorting, format on save
+  - MyPy: Type checking with ignore-missing-imports
+  - Pytest: Async mode auto, coverage reporting
+  - Pre-commit hooks: ruff format, ruff check, mypy
+  - Make commands: start, stop, health, test, lint, format
+
+Feature 8: Service Health Checks
+---------------------------------
+Description: Docker-based health monitoring for all services
+Implementation Details:
+  - API: Python health endpoint check every 30s
+  - PostgreSQL: pg_isready every 5s, 10 retries
+  - OpenSearch: Cluster health check every 30s, 60s start period
+  - OpenSearch Dashboards: Status API check every 30s
+  - Airflow: HTTP health check every 30s, 120s start period
+  - Ollama: ollama list command every 30s
+
+Feature 9: Inter-Service Communication
+---------------------------------------
+Description: Docker bridge network for service-to-service connectivity
+Implementation Details:
+  - Network: rag-network (bridge driver)
+  - Services use container names as hostnames
+  - API connects to: opensearch, ollama, postgres
+  - Airflow connects to: postgres, opensearch, ollama, rag-api
+  - Healthcheck dependencies ensure startup order
+
+Feature 10: Containerized Deployment
+-------------------------------------
+Description: Multi-container orchestration with Docker Compose
+Key Components:
+  - compose.yml - Service definitions with volumes and networks
+  - Dockerfile - Multi-stage API container build
+  - airflow/Dockerfile - Custom Airflow image
+Volumes:
+  - postgres_data: Persistent database storage
+  - opensearch_data: Persistent search index storage
+  - ollama_data: Persistent LLM model storage
+  - airflow_logs: Workflow execution logs
+Implementation Details:
+  - Multi-stage build for smaller API image (base + final)
+  - UV package manager for fast dependency installation
+  - Health check-based startup dependencies
+  - Restart policies: unless-stopped for critical services
+
+
+ENVIRONMENT CONFIGURATION
+=========================
+
+Application Settings:
+---------------------
+APP_VERSION=0.1.0              # Application version for /health endpoint
+DEBUG=false                    # Debug mode (affects logging verbosity)
+ENVIRONMENT=development        # Environment name (dev/staging/prod)
+SERVICE_NAME=rag-api           # Service identifier for monitoring
+
+PostgreSQL Configuration:
+-------------------------
+POSTGRES_DATABASE_URL=postgresql://rag_user:rag_password@localhost:5432/rag_db
+  # Full connection string for SQLAlchemy
+POSTGRES_ECHO_SQL=false        # Log SQL queries to stdout (debug only)
+POSTGRES_POOL_SIZE=20          # Connection pool size
+POSTGRES_MAX_OVERFLOW=0        # Max connections beyond pool_size
+
+OpenSearch Configuration:
+-------------------------
+OPENSEARCH_HOST=http://opensearch:9200
+  # OpenSearch API endpoint (use container name in Docker, localhost for local dev)
+
+Ollama Configuration:
+---------------------
+OLLAMA_HOST=http://ollama:11434
+  # Ollama API endpoint (use container name in Docker)
+OLLAMA_MODELS=llama3.2:1b,gpt-oss:20b
+  # Comma-separated list of models to load
+OLLAMA_DEFAULT_MODEL=llama3.2:1b
+  # Default model for inference requests
+OLLAMA_TIMEOUT=300
+  # Request timeout in seconds (5 minutes for large model operations)
+
+Airflow Configuration:
+----------------------
+AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  # Executor type (LocalExecutor for single-machine)
+AIRFLOW__CORE__LOAD_EXAMPLES=false
+  # Don't load Airflow example DAGs
+AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+  # Allow config viewing in UI (development only)
+AIRFLOW__HOME=/opt/airflow
+  # Airflow home directory in container
+AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+  # Airflow metadata database connection
+
+Container-Specific Overrides:
+------------------------------
+Docker Compose automatically overrides hostnames for inter-service communication:
+- OPENSEARCH_HOST=http://opensearch:9200 (not localhost)
+- OLLAMA_HOST=http://ollama:11434 (not localhost)
+- POSTGRES_DATABASE_URL uses postgres:5432 (not localhost:5432)
+
+Environment Variable Examples:
+------------------------------
+# Development (local services)
+POSTGRES_DATABASE_URL=postgresql://rag_user:rag_password@localhost:5432/rag_db
+OPENSEARCH_HOST=http://localhost:9200
+OLLAMA_HOST=http://localhost:11434
+
+# Docker Compose (container hostnames)
+POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+OPENSEARCH_HOST=http://opensearch:9200
+OLLAMA_HOST=http://ollama:11434
+
+
+BUILD & DEPLOYMENT PROCESSES
+=============================
+
+Development Commands:
+---------------------
+# Install dependencies
+uv sync                          # Install all dependencies from uv.lock
+
+# Start development server (local)
+uv run uvicorn src.main:app --reload --port 8000
+
+# Run Jupyter notebook
+uv run jupyter notebook notebooks/week1/week1_setup.ipynb
+
+Testing Commands:
+-----------------
+# Unit and integration tests
+uv run pytest                    # Run all tests
+uv run pytest tests/unit/        # Run unit tests only
+uv run pytest tests/api/         # Run API integration tests
+
+# Coverage reporting
+uv run pytest --cov=src          # Run tests with coverage
+uv run pytest --cov=src --cov-report=html
+                                # Generate HTML coverage report
+
+Code Quality Commands:
+----------------------
+# Formatting
+uv run ruff format               # Format all Python files
+
+# Linting
+uv run ruff check                # Check for issues
+uv run ruff check --fix          # Auto-fix issues
+
+# Type checking
+uv run mypy src/                 # Type check source code
+
+# Pre-commit hooks
+uv run pre-commit install        # Install git hooks
+uv run pre-commit run --all-files
+                                # Run all hooks manually
+
+Build Process:
+--------------
+1. Dockerfile Build Stages:
+
+   Stage 1 (base):
+   - Uses ghcr.io/astral-sh/uv:python3.12-bookworm base image
+   - Copies pyproject.toml and uv.lock
+   - Runs uv sync --frozen --no-dev (production deps only)
+   - Copies source code to /app/src
+
+   Stage 2 (final):
+   - Uses python:3.12.8-slim for minimal size
+   - Copies virtual environment from base stage
+   - Sets PATH to include .venv/bin
+   - Exposes port 8000
+   - CMD: uvicorn with 4 workers
+
+2. Build Command:
+   docker build -t rag-api:0.1.0 .
+
+3. Build Output:
+   - Image size: ~500MB (slim Python + dependencies)
+   - Virtual environment: /app/.venv
+   - Source code: /app/src
+   - Entry point: uvicorn src.main:app
+
+Deployment Steps (Docker Compose):
+-----------------------------------
+1. Prepare environment:
+   cp .env.example .env          # Copy environment template
+   # Edit .env with your configuration
+
+2. Start all services:
+   docker compose up --build -d  # Build and start in detached mode
+
+3. Wait for services to be healthy (2-3 minutes):
+   docker compose ps             # Check service status
+
+4. Verify services:
+   make health                   # Check all service health endpoints
+   curl http://localhost:8000/api/v1/health
+   curl http://localhost:9200/_cluster/health
+
+5. Access service UIs:
+   - API Docs: http://localhost:8000/docs
+   - Airflow: http://localhost:8080 (admin/admin)
+   - OpenSearch Dashboards: http://localhost:5601
+
+6. Stop services:
+   docker compose down           # Stop and remove containers
+   docker compose down -v        # Also remove volumes (data loss!)
+
+Deployment Steps (Production - Future Weeks):
+----------------------------------------------
+Not implemented in Week 1. Future production deployment will include:
+- Kubernetes manifests for container orchestration
+- Helm charts for configuration management
+- CI/CD pipeline with GitHub Actions or GitLab CI
+- Environment-specific configurations (staging, production)
+- Secret management (AWS Secrets Manager, Vault)
+- Monitoring and logging (Prometheus, Grafana, ELK)
+
+
+ROUTING STRUCTURE
+=================
+
+Base Path: /api/v1
+------------------
+All API endpoints are prefixed with /api/v1 for versioning
+
+Health Check Routes:
+--------------------
+GET /api/v1/ping
+  Description: Simple connectivity test
+  Authentication: None required
+  Response: {"status": "ok", "message": "pong"}
+  Purpose: Basic liveness probe for load balancers
+
+GET /api/v1/health
+  Description: Comprehensive service health check
+  Authentication: None required
+  Response Model: HealthResponse
+  Response Fields:
+    - status: "ok" | "degraded" (based on service health)
+    - version: Application version from settings
+    - environment: Environment name (development/staging/production)
+    - service_name: Service identifier
+    - services: Dict of service health checks
+      - database: {status: "healthy"|"unhealthy", message: str}
+      - ollama: {status: "healthy"|"unhealthy", message: str}
+  Purpose: Readiness probe, monitoring dashboard integration
+
+Paper Routes:
+-------------
+GET /api/v1/papers/{arxiv_id}
+  Description: Get paper metadata by arXiv ID
+  Authentication: None required (Week 1)
+  Path Parameters:
+    - arxiv_id: arXiv paper ID (format: YYMM.NNNNN or YYMM.NNNNNvV)
+      Regex: ^\d{4}\.\d{4,5}(v\d+)?$
+      Examples: 2401.00001, 2401.00001v1
+  Response Model: PaperResponse
+  Response Fields:
+    - id: UUID (database primary key)
+    - arxiv_id: str (unique arXiv identifier)
+    - title: str
+    - authors: List[str]
+    - abstract: str
+    - categories: List[str]
+    - published_date: datetime
+    - pdf_url: str
+    - created_at: datetime
+    - updated_at: datetime
+  Errors:
+    - 404: Paper not found in database
+    - 422: Invalid arxiv_id format
+  Purpose: Placeholder for future data ingestion (Week 2+)
+
+Ask Routes (Placeholder):
+-------------------------
+/api/v1/ask/*
+  Description: Future RAG query endpoints
+  Status: Not implemented in Week 1
+  Purpose: Reserved for RAG question-answering (Week 5+)
+
+Authentication & Authorization:
+--------------------------------
+Week 1: No authentication implemented
+Future Weeks: Will implement JWT-based authentication for query endpoints
+
+Route Guards:
+-------------
+Week 1: None implemented
+Future Weeks:
+  - Rate limiting for query endpoints
+  - API key validation for external integrations
+  - Role-based access control (RBAC) for admin endpoints
+
+Interactive Documentation:
+---------------------------
+Swagger UI: http://localhost:8000/docs
+  - Interactive API testing
+  - Request/response schema exploration
+  - Try-it-out functionality
+
+ReDoc: http://localhost:8000/redoc
+  - Alternative documentation view
+  - Better for reading and sharing
+
+
+ARCHITECTURAL PATTERNS
+======================
+
+Component Architecture:
+-----------------------
+Pattern: Layered Architecture (Onion Architecture variant)
+
+Layer 1 - Routers (API Layer):
+  - Handle HTTP requests/responses
+  - Request validation via Pydantic schemas
+  - Dependency injection for services
+  - Error handling and HTTP status codes
+  - Example: src/routers/ping.py, src/routers/papers.py
+
+Layer 2 - Services (Business Logic):
+  - Orchestrate business operations
+  - External service integrations
+  - Business rule validation
+  - Example: src/services/ollama/client.py (minimal in Week 1)
+
+Layer 3 - Repositories (Data Access):
+  - Database CRUD operations
+  - Query building and execution
+  - Data mapping (ORM to domain models)
+  - Example: src/repositories/paper.py
+
+Layer 4 - Models (Data Layer):
+  - SQLAlchemy ORM models
+  - Database schema definitions
+  - Relationships and constraints
+  - Example: src/models/paper.py
+
+Cross-Cutting Concerns:
+  - Configuration: src/config.py (Pydantic Settings)
+  - Dependency Injection: src/dependencies.py (FastAPI Depends)
+  - Database Abstraction: src/db/interfaces/ (Strategy pattern)
+
+State Management Pattern:
+--------------------------
+Pattern: Application State Container
+
+Implementation:
+  - FastAPI app.state used as dependency injection container
+  - Lifespan context manager for initialization/cleanup
+  - State objects: settings, database, pdf_parser, opensearch, llm (future)
+
+Example from src/main.py:
+  @asynccontextmanager
+  async def lifespan(app: FastAPI):
+      app.state.settings = get_settings()
+      app.state.database = make_database()
+      yield
+      app.state.database.teardown()
+
+API Service Pattern:
+--------------------
+Pattern: Repository Pattern + Dependency Injection
+
+Implementation:
+  - Repositories encapsulate data access logic
+  - Injected via FastAPI Depends() mechanism
+  - Session management via context managers
+  - Separation of concerns (routing, business logic, data access)
+
+Example from src/routers/papers.py:
+  def get_paper_details(db: SessionDep, arxiv_id: str):
+      paper_repo = PaperRepository(db)
+      paper = paper_repo.get_by_arxiv_id(arxiv_id)
+
+Database Abstraction Pattern:
+------------------------------
+Pattern: Strategy Pattern + Factory Pattern
+
+Implementation:
+  - BaseDatabase abstract interface (src/db/interfaces/base.py)
+  - PostgreSQLDatabase concrete implementation
+  - make_database() factory for instantiation
+  - Pluggable backends (could add MongoDB, DynamoDB, etc.)
+
+Benefits:
+  - Easy to swap database implementations
+  - Testable via mock database interfaces
+  - Configuration-driven database selection
+
+Code Organization Principles:
+------------------------------
+1. Domain-Driven Design:
+   - Models represent domain entities (Paper)
+   - Repositories provide data access abstractions
+   - Services contain business logic
+
+2. Separation of Concerns:
+   - Routers: HTTP layer only
+   - Services: Business logic only
+   - Repositories: Data access only
+   - Models: Data structure only
+
+3. Dependency Inversion:
+   - High-level modules depend on abstractions
+   - Database interface abstraction
+   - Service injection via FastAPI dependencies
+
+4. Single Responsibility:
+   - Each module has one reason to change
+   - PaperRepository: only paper data access
+   - PaperRouter: only paper HTTP endpoints
+
+Security Practices:
+-------------------
+Week 1 Scope:
+  - Database connection credentials in .env (not in code)
+  - Docker secrets for sensitive configuration (future)
+  - No authentication (development only)
+
+Future Weeks:
+  - JWT token-based authentication
+  - API key management for external services
+  - Rate limiting and DDoS protection
+  - Input validation via Pydantic schemas
+  - SQL injection prevention via SQLAlchemy ORM
+  - CORS configuration for production
+
+Performance Optimizations:
+--------------------------
+Week 1 Implementation:
+  - Database connection pooling (pool_size=20)
+  - Async/await for I/O operations
+  - Multi-worker uvicorn deployment (4 workers)
+  - Docker multi-stage builds for smaller images
+
+Future Optimizations:
+  - Response caching (Redis)
+  - Query result pagination
+  - Database query optimization
+  - Vector embedding caching
+  - OpenSearch query optimization
+
+Testing Strategy:
+-----------------
+Pattern: Test Pyramid (Unit > Integration > E2E)
+
+Test Types:
+  1. Unit Tests (tests/unit/):
+     - Test individual functions and classes
+     - Mock external dependencies
+     - Fast execution (<1s per test)
+
+  2. Integration Tests (tests/api/):
+     - Test API endpoints with real database
+     - Use testcontainers for isolated environments
+     - Test service interactions
+
+  3. Fixtures (tests/conftest.py):
+     - Shared test configuration
+     - Database setup/teardown
+     - Test data factories
+
+Test Configuration:
+  - Pytest async mode: auto
+  - Coverage target: 80%+ (future)
+  - Test environment: .env.test
+
+Error Handling Pattern:
+-----------------------
+Pattern: Custom Exception Hierarchy + FastAPI Exception Handlers
+
+Implementation:
+  - Custom exceptions in src/exceptions.py
+  - FastAPI exception handlers for HTTP status mapping
+  - Structured error responses
+
+Example Error Response:
+  {
+    "status_code": 404,
+    "detail": "Paper not found",
+    "error_type": "NotFoundError"
+  }
+
+
+API INTEGRATION FLOWS
+=====================
+
+Request/Response Cycle:
+-----------------------
+1. Client sends HTTP request to API endpoint
+2. FastAPI router receives request
+3. Pydantic validates request parameters/body
+4. Dependencies injected (database, settings, services)
+5. Router calls service/repository methods
+6. Business logic executed
+7. Database queries executed (if needed)
+8. Response data validated via Pydantic schema
+9. HTTP response returned with appropriate status code
+
+Example Flow - GET /api/v1/health:
+-----------------------------------
+1. Client: curl http://localhost:8000/api/v1/health
+2. FastAPI: Routes to ping.router.health_check()
+3. Dependencies: Injects settings (SettingsDep), database (DatabaseDep)
+4. Database Check:
+   - database.get_session() creates session
+   - Execute SELECT 1 query
+   - Result: {"status": "healthy", "message": "Connected successfully"}
+5. Ollama Check:
+   - OllamaClient(settings) instantiated
+   - HTTP GET to http://ollama:11434/api/tags
+   - Result: {"status": "healthy", "message": "Ollama service is running"}
+6. Response Assembly:
+   - overall_status = "ok" (if all services healthy)
+   - HealthResponse model created
+   - Pydantic validates response schema
+7. HTTP Response:
+   - Status: 200 OK
+   - Body: JSON with status, version, environment, services
+
+Database Connection Flow:
+--------------------------
+1. Application Startup (lifespan):
+   - get_settings() loads environment config
+   - make_database() creates PostgreSQLDatabase instance
+   - database.startup() initializes connection pool
+   - app.state.database = database (store in app state)
+
+2. Request Handling:
+   - DatabaseDep dependency injects database instance
+   - database.get_session() returns context manager
+   - Session used for queries
+   - Session automatically closed after request
+
+3. Application Shutdown:
+   - database.teardown() closes connection pool
+   - All active sessions closed gracefully
+
+Example from src/db/interfaces/postgresql.py:
+  @contextmanager
+  def get_session(self) -> Generator[Session, None, None]:
+      session = self._session_maker()
+      try:
+          yield session
+          session.commit()
+      except Exception:
+          session.rollback()
+          raise
+      finally:
+          session.close()
+
+Service Health Check Flow:
+---------------------------
+Ollama Health Check:
+  1. OllamaClient instantiated with settings (ollama_host)
+  2. Async HTTP GET to {ollama_host}/api/tags
+  3. Timeout: 5 seconds
+  4. Success (200): Return {"status": "healthy", "message": "running"}
+  5. Failure: Return {"status": "unhealthy", "message": "error details"}
+  6. Exceptions caught and logged
+
+Database Health Check:
+  1. Get database session from connection pool
+  2. Execute simple query: SELECT 1
+  3. Success: Return {"status": "healthy", "message": "Connected successfully"}
+  4. Exception: Return {"status": "unhealthy", "message": "Connection failed"}
+  5. overall_status set to "degraded" if any service unhealthy
+
+Docker Health Check Flow:
+--------------------------
+1. Docker executes healthcheck command every interval
+2. Command runs inside container
+3. Exit code 0: Service healthy
+4. Exit code 1: Service unhealthy
+5. Docker marks container status accordingly
+6. Docker Compose dependency system uses health status
+7. Dependent services wait for dependencies to be healthy
+
+Example - API Health Check:
+  test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+
+KEY DEPENDENCIES & PURPOSES
+============================
+
+Core Application Dependencies:
+-------------------------------
+fastapi[standard] (0.115.12+)
+  Purpose: Async web framework with automatic API documentation
+  Used For: REST API endpoints, request/response validation, OpenAPI docs
+  Key Features: Async/await, dependency injection, Pydantic integration
+
+uvicorn (0.34.0+)
+  Purpose: ASGI server for running FastAPI applications
+  Used For: Production web server with multi-worker support
+  Key Features: Auto-reload in development, worker process management
+
+pydantic (2.11.3+) & pydantic-settings (2.8.1+)
+  Purpose: Data validation and configuration management
+  Used For: Request/response schemas, environment variable parsing
+  Key Features: Type safety, automatic validation, settings from .env
+
+Database Dependencies:
+----------------------
+sqlalchemy (2.0.0+)
+  Purpose: SQL toolkit and ORM for Python
+  Used For: Database models, query building, session management
+  Key Features: Async support, declarative models, relationship mapping
+
+psycopg2-binary (2.9.10+)
+  Purpose: PostgreSQL database adapter
+  Used For: PostgreSQL driver for SQLAlchemy
+  Key Features: Binary distribution (no compilation needed)
+
+alembic (1.13.3+)
+  Purpose: Database migration tool for SQLAlchemy
+  Used For: Schema versioning, database migrations (future weeks)
+  Key Features: Auto-generate migrations, rollback support
+
+Search Engine Dependencies:
+----------------------------
+opensearch-py (3.0.0+)
+  Purpose: Python client for OpenSearch
+  Used For: Hybrid search (BM25 + vector) in future weeks
+  Key Features: Index management, bulk operations, async support
+  Week 1 Status: Client library installed, service running, not yet used
+
+HTTP Client Dependencies:
+--------------------------
+requests (2.32.3+)
+  Purpose: Synchronous HTTP client
+  Used For: Airflow DAG service connectivity checks
+  Key Features: Simple API, session management, timeout support
+
+httpx (0.28.1+)
+  Purpose: Async HTTP client
+  Used For: Ollama health check, future external API calls
+  Key Features: Async/await, connection pooling, timeout management
+
+Development Dependencies:
+--------------------------
+ruff (0.11.5+)
+  Purpose: Fast Python linter and formatter (replaces black, isort, flake8)
+  Used For: Code formatting, import sorting, linting
+  Key Features: 10-100x faster than alternatives, zero config
+
+mypy (1.15.0+)
+  Purpose: Static type checker for Python
+  Used For: Type safety, catching type-related bugs
+  Key Features: Gradual typing, type inference, strict mode
+
+pytest (8.3.5+)
+  Purpose: Testing framework
+  Used For: Unit tests, integration tests, fixtures
+  Key Features: Async support, fixtures, parametrization
+
+pytest-cov (6.1.1+)
+  Purpose: Coverage plugin for pytest
+  Used For: Measuring test coverage, generating reports
+  Key Features: HTML reports, terminal output, coverage thresholds
+
+testcontainers (4.10.0+)
+  Purpose: Docker-based integration testing
+  Used For: Isolated test environments with real services
+  Key Features: Auto cleanup, port mapping, wait strategies
+
+polyfactory (2.21.0+)
+  Purpose: Test data factory library
+  Used For: Generating realistic test data for Pydantic models
+  Key Features: Automatic factory generation, customizable data
+
+pre-commit (4.2.0+)
+  Purpose: Git hook manager
+  Used For: Running linters/formatters before commits
+  Key Features: Hook configuration, automatic installation
+
+Notebook Dependencies:
+----------------------
+jupyter (1.1.1+) & notebook (7.4.4+)
+  Purpose: Interactive notebook environment
+  Used For: Week 1 setup guide (week1_setup.ipynb)
+  Key Features: Code execution, markdown documentation, visualization
+
+Service-Specific Dependencies:
+-------------------------------
+Airflow Dependencies (requirements-airflow.txt):
+  - apache-airflow[postgres]==2.10.3
+    Purpose: Workflow orchestration
+    Used For: DAG definitions, task scheduling
+
+  - psycopg2-binary
+    Purpose: PostgreSQL adapter for Airflow metadata
+    Used For: Airflow backend database connection
+
+Dependency Management:
+----------------------
+Tool: UV (https://docs.astral.sh/uv/)
+  Purpose: Fast Python package manager (replaces pip, poetry, conda)
+  Used For: Dependency installation, lock file management
+  Key Features:
+    - 10-100x faster than pip
+    - Automatic virtual environment creation
+    - Lock file for reproducible installs (uv.lock)
+    - Compatible with pip and pyproject.toml
+  Commands:
+    - uv sync: Install dependencies from lock file
+    - uv add <package>: Add new dependency
+    - uv lock: Update lock file
+
+
+APPLICATION ENTRY FLOW
+======================
+
+Initialization Sequence:
+------------------------
+1. Container Startup:
+   - Docker Compose reads compose.yml
+   - Services start in dependency order (postgres → opensearch → api/airflow)
+   - Health checks begin running
+
+2. FastAPI Application Bootstrap (src/main.py):
+
+   Step 1: Module imports
+     - Import FastAPI, routers, config, database factory
+     - Configure logging (INFO level, timestamp format)
+
+   Step 2: Lifespan context manager execution
+     - logger.info("Starting RAG API...")
+     - get_settings() loads environment variables via Pydantic
+     - app.state.settings = settings (store in application state)
+     - make_database() creates PostgreSQL database instance
+       - Reads PostgreSQL config from settings
+       - Creates SQLAlchemy engine with connection pool
+       - Calls database.startup() to initialize pool
+     - app.state.database = database (store in application state)
+     - Future service placeholders initialized as None:
+       - app.state.pdf_parser_service = None
+       - app.state.opensearch_service = None
+       - app.state.llm_service = None
+     - logger.info("API ready")
+
+   Step 3: FastAPI app creation
+     - FastAPI() instantiated with metadata:
+       - title: "arXiv Paper Curator API"
+       - version: "0.1.0" (from APP_VERSION env var)
+       - root_path: "/api/v1" (versioned URL prefix)
+       - lifespan: lifespan context manager
+
+   Step 4: Router registration
+     - app.include_router(ping.router) - Health check routes
+     - app.include_router(papers.router) - Paper routes
+     - app.include_router(ask.router) - Placeholder RAG routes
+
+3. Uvicorn Server Startup:
+   - Uvicorn loads ASGI application (app)
+   - Spawns 4 worker processes (configured in Dockerfile)
+   - Each worker binds to 0.0.0.0:8000
+   - Workers share connection pool (SQLAlchemy thread-safe)
+
+4. Service Registration:
+   - FastAPI automatic OpenAPI schema generation
+   - Swagger UI mounted at /docs
+   - ReDoc mounted at /redoc
+   - Root path prefix applied to all routes
+
+5. Health Check Activation:
+   - Docker executes health check command
+   - Python script requests http://localhost:8000/api/v1/health
+   - Health check validates database and Ollama connectivity
+   - Container marked healthy after successful check
+
+Route Resolution Flow:
+----------------------
+1. HTTP request arrives at Uvicorn
+2. Uvicorn routes to FastAPI ASGI app
+3. FastAPI middleware stack processes request (CORS, etc.)
+4. Path matching against registered routers
+   - /api/v1/ping → ping.router
+   - /api/v1/health → ping.router
+   - /api/v1/papers/{arxiv_id} → papers.router
+5. Dependency injection executes:
+   - SettingsDep: Returns app.state.settings
+   - DatabaseDep: Returns app.state.database
+   - SessionDep: Calls database.get_session()
+6. Router handler function executes
+7. Response validation via Pydantic response_model
+8. JSON serialization
+9. HTTP response returned
+
+Component Mounting Order:
+--------------------------
+1. FastAPI app instance created
+2. Lifespan context manager enters (startup phase)
+   - Settings loaded
+   - Database connection pool initialized
+   - Service placeholders created
+3. Routers registered (order matters for path precedence):
+   - ping.router (health endpoints)
+   - papers.router (paper endpoints)
+   - ask.router (RAG endpoints - placeholder)
+4. Middleware stack configured (CORS, logging, etc.)
+5. OpenAPI documentation generation
+6. Uvicorn starts listening on port 8000
+
+Shutdown Sequence:
+------------------
+1. SIGTERM signal received (docker compose down)
+2. Uvicorn begins graceful shutdown
+3. Stop accepting new requests
+4. Wait for in-flight requests to complete (max 30s)
+5. Lifespan context manager exits (cleanup phase):
+   - database.teardown() called
+   - Connection pool closes all connections
+   - Active sessions rolled back
+6. Worker processes terminate
+7. Container exits with code 0
+
+Dependency Injection Flow:
+---------------------------
+Example: GET /api/v1/health endpoint
+
+1. Request received: GET /api/v1/health
+2. FastAPI routes to ping.router.health_check()
+3. Function signature declares dependencies:
+   async def health_check(settings: SettingsDep, database: DatabaseDep)
+4. FastAPI resolves SettingsDep:
+   - Calls get_settings() dependency
+   - Returns app.state.settings
+5. FastAPI resolves DatabaseDep:
+   - Calls get_database() dependency
+   - Returns app.state.database
+6. Handler executes with injected dependencies
+7. Response returned
+
+Error Handling Flow:
+--------------------
+1. Exception raised in handler
+2. FastAPI catches exception
+3. Exception mapped to HTTP status code:
+   - HTTPException → Specified status code
+   - Validation Error → 422 Unprocessable Entity
+   - Uncaught Exception → 500 Internal Server Error
+4. Error response formatted as JSON:
+   {
+     "detail": "Error message",
+     "status_code": 404
+   }
+5. Error logged to stdout (captured by Docker)
+6. Response returned to client
+
+
+APPLICATION ENTRY FLOW
+======================
+
+Detailed Initialization Sequence:
+----------------------------------
+Stage 1: Docker Compose Orchestration
+  1. docker compose up --build -d command executed
+  2. Docker Compose reads compose.yml
+  3. Networks created: rag-network (bridge)
+  4. Volumes created: postgres_data, opensearch_data, ollama_data, airflow_logs
+  5. Service build order (depends_on with health conditions):
+     - postgres (no dependencies)
+     - opensearch (no dependencies)
+     - ollama (no dependencies)
+     - api (depends_on: postgres, opensearch)
+     - opensearch-dashboards (depends_on: opensearch)
+     - airflow (depends_on: postgres, opensearch)
+
+Stage 2: PostgreSQL Startup
+  1. postgres:16-alpine image pulled
+  2. Container starts with environment:
+     - POSTGRES_DB=rag_db
+     - POSTGRES_USER=rag_user
+     - POSTGRES_PASSWORD=rag_password
+  3. PostgreSQL initializes database cluster
+  4. Health check begins: pg_isready -U rag_user -d rag_db (every 5s)
+  5. Health check passes after ~10-15 seconds
+  6. Container marked healthy
+
+Stage 3: OpenSearch Startup
+  1. opensearchproject/opensearch:2.19.0 image pulled
+  2. Container starts with configuration:
+     - Single-node mode (discovery.type=single-node)
+     - Security plugin disabled (DISABLE_SECURITY_PLUGIN=true)
+     - Memory settings: -Xms512m -Xmx512m
+  3. OpenSearch initializes indices and cluster
+  4. Health check begins: curl http://localhost:9200/_cluster/health (every 30s)
+  5. Health check passes after ~30-60 seconds
+  6. Container marked healthy
+
+Stage 4: Ollama Startup
+  1. ollama/ollama:0.11.2 image pulled
+  2. Container starts
+  3. Ollama service initializes (model loading deferred)
+  4. Health check begins: ollama list (every 30s)
+  5. Health check passes after ~10-15 seconds
+  6. Container marked healthy
+
+Stage 5: API Container Build & Startup
+  1. Dockerfile multi-stage build:
+     a. Base stage:
+        - uv:python3.12-bookworm image
+        - Copy pyproject.toml, uv.lock
+        - uv sync --frozen --no-dev (install production dependencies)
+        - Copy src/ directory
+     b. Final stage:
+        - python:3.12.8-slim image
+        - Copy virtual environment from base
+        - Set PATH=/app/.venv/bin:$PATH
+        - EXPOSE 8000
+  2. Container starts, CMD executes:
+     uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+  3. Uvicorn master process spawns 4 worker processes
+  4. Each worker executes FastAPI application bootstrap (see below)
+  5. Health check begins after 40s start_period
+  6. Health check passes after successful /api/v1/health response
+  7. Container marked healthy
+
+Stage 6: FastAPI Application Bootstrap (per worker)
+  1. Import Phase:
+     - Python imports src.main module
+     - Submodules imported: config, database, routers, etc.
+     - Logging configured (INFO level, formatted output)
+
+  2. Lifespan Context Manager Enters:
+     @asynccontextmanager
+     async def lifespan(app: FastAPI):
+       a. logger.info("Starting RAG API...")
+       b. get_settings() called:
+          - Pydantic Settings loads .env file
+          - Validates environment variables
+          - Returns immutable Settings instance
+       c. app.state.settings = settings (store in app state)
+       d. make_database() called:
+          - Creates PostgreSQLSettings from config
+          - Instantiates PostgreSQLDatabase
+          - Calls database.startup():
+            * Creates SQLAlchemy engine
+            * Configures connection pool (size=20, overflow=0)
+            * Tests connection
+       e. app.state.database = database (store in app state)
+       f. Future service placeholders:
+          - app.state.pdf_parser_service = None
+          - app.state.opensearch_service = None
+          - app.state.llm_service = None
+       g. logger.info("API ready")
+
+  3. FastAPI App Instantiation:
+     app = FastAPI(
+       title="arXiv Paper Curator API",
+       description="Personal arXiv CS.AI paper curator with RAG capabilities",
+       version="0.1.0",
+       root_path="/api/v1",
+       lifespan=lifespan
+     )
+
+  4. Router Registration:
+     - app.include_router(ping.router)
+       * Registers: GET /ping, GET /health
+     - app.include_router(papers.router)
+       * Registers: GET /papers/{arxiv_id}
+     - app.include_router(ask.router)
+       * Placeholder routes
+
+  5. Automatic OpenAPI Schema Generation:
+     - FastAPI introspects all routes
+     - Generates OpenAPI 3.1.0 schema
+     - Mounts Swagger UI at /docs
+     - Mounts ReDoc at /redoc
+
+  6. Worker Ready:
+     - Worker process signals readiness to Uvicorn master
+     - Master adds worker to active pool
+     - Worker begins accepting requests
+
+Stage 7: Airflow Startup
+  1. Custom Dockerfile build:
+     - python:3.12-slim base image
+     - Install system dependencies (libpq-dev, poppler-utils, tesseract-ocr)
+     - Create airflow user (UID/GID 50000)
+     - Install apache-airflow[postgres]==2.10.3
+     - Install project dependencies (requirements-airflow.txt)
+     - Copy entrypoint.sh
+  2. Container starts, entrypoint.sh executes:
+     a. Wait for postgres to be healthy
+     b. airflow db init (initialize Airflow metadata database)
+     c. airflow db migrate (apply schema migrations)
+     d. Create admin user (username: admin, password: admin)
+     e. Start webserver: airflow webserver --port 8080 (background)
+     f. Start scheduler: airflow scheduler (foreground)
+  3. Airflow loads DAGs from /opt/airflow/dags:
+     - hello_world_dag.py detected
+     - DAG parsed and added to scheduler
+  4. Health check begins after 120s start_period
+  5. Health check passes after successful /health response
+  6. Container marked healthy
+
+Stage 8: OpenSearch Dashboards Startup
+  1. opensearchproject/opensearch-dashboards:2.19.0 image pulled
+  2. Container starts with configuration:
+     - OPENSEARCH_HOSTS=http://opensearch:9200
+     - Security plugin disabled
+  3. Dashboards connects to OpenSearch
+  4. Health check begins: curl http://localhost:5601/api/status (every 30s)
+  5. Health check passes after ~30-60 seconds
+  6. Container marked healthy
+
+Stage 9: All Services Ready
+  - docker compose ps shows all services as healthy
+  - Services accessible:
+    * API: http://localhost:8000
+    * Airflow: http://localhost:8080
+    * OpenSearch Dashboards: http://localhost:5601
+    * PostgreSQL: localhost:5432
+    * OpenSearch: localhost:9200
+    * Ollama: localhost:11434
+
+Request Handling Flow (Example):
+---------------------------------
+Client Request: curl http://localhost:8000/api/v1/health
+
+1. Request Reception:
+   - TCP connection to port 8000
+   - Uvicorn master routes to available worker
+   - Worker receives HTTP GET request
+
+2. ASGI Application Entry:
+   - FastAPI receives request via ASGI protocol
+   - Path parsing: /api/v1/health
+   - Method matching: GET
+
+3. Middleware Stack (if configured):
+   - CORS middleware (if enabled)
+   - Request logging middleware (if enabled)
+   - Custom middleware (none in Week 1)
+
+4. Route Matching:
+   - FastAPI router searches registered routes
+   - Match found: ping.router → health_check handler
+   - Path parameters extracted (none for this route)
+
+5. Dependency Resolution:
+   - Analyze function signature:
+     async def health_check(settings: SettingsDep, database: DatabaseDep)
+   - Resolve SettingsDep:
+     * Calls get_settings() → Depends(lambda: app.state.settings)
+     * Returns Settings instance from app state
+   - Resolve DatabaseDep:
+     * Calls get_database() → Depends(lambda: app.state.database)
+     * Returns BaseDatabase instance from app state
+
+6. Handler Execution:
+   - Create services dict
+   - Database health check:
+     * with database.get_session() as session:
+     * session.execute(text("SELECT 1"))
+     * Success: services["database"] = ServiceStatus("healthy", "Connected")
+   - Ollama health check:
+     * ollama_client = OllamaClient(settings)
+     * await ollama_client.health_check()
+     * HTTP GET to http://ollama:11434/api/tags
+     * Success: services["ollama"] = ServiceStatus("healthy", "running")
+   - Determine overall_status:
+     * "ok" if all services healthy
+     * "degraded" if any service unhealthy
+
+7. Response Construction:
+   - Create HealthResponse Pydantic model:
+     HealthResponse(
+       status=overall_status,
+       version=settings.app_version,
+       environment=settings.environment,
+       service_name=settings.service_name,
+       services=services
+     )
+   - Pydantic validates response data
+
+8. Serialization:
+   - HealthResponse converted to dict
+   - JSON serialization
+   - Content-Type: application/json header added
+
+9. HTTP Response:
+   - Status: 200 OK
+   - Headers: Content-Type, Content-Length
+   - Body: JSON response
+   - Response sent to client
+
+10. Cleanup:
+    - Database session closed (context manager __exit__)
+    - Request logging
+    - Connection recycled or closed
+
+
+DEPLOYMENT CHECKLIST
+====================
+
+Pre-Deployment Checks:
+-----------------------
+Infrastructure:
+[ ] Docker Desktop installed and running (memory ≥ 8GB recommended)
+[ ] Ports available: 8000, 8080, 5432, 9200, 5601, 11434
+[ ] Disk space available: ≥ 20GB free (Docker images + volumes)
+[ ] UV package manager installed (for local development)
+[ ] Python 3.12+ installed (for local development)
+
+Configuration:
+[ ] .env file created from .env.example
+[ ] Database credentials configured (POSTGRES_DATABASE_URL)
+[ ] Service hostnames correct for Docker (postgres, opensearch, ollama)
+[ ] Ollama models specified (OLLAMA_MODELS)
+[ ] Airflow executor configured (AIRFLOW__CORE__EXECUTOR)
+
+Code Quality:
+[ ] All tests pass: uv run pytest
+[ ] Code formatted: uv run ruff format
+[ ] Linting clean: uv run ruff check
+[ ] Type checking clean: uv run mypy src/
+[ ] Pre-commit hooks installed: uv run pre-commit install
+
+Development Deployment Steps:
+------------------------------
+Step 1: Environment Setup
+  $ cd /path/to/week-1
+  $ cp .env.example .env
+  $ vim .env  # Edit configuration (optional for defaults)
+
+Step 2: Install Dependencies (Local Development)
+  $ uv sync
+  # Installs all production + dev dependencies
+  # Creates virtual environment at .venv/
+
+Step 3: Start Services
+  $ make start
+  # OR: docker compose up --build -d
+  # Expected output: Creating 6 containers (network, volumes, services)
+  # Wait 2-3 minutes for all services to become healthy
+
+Step 4: Verify Service Status
+  $ make status
+  # OR: docker compose ps
+  # Expected: All services show "healthy" status
+
+  $ make health
+  # OR: curl http://localhost:8000/api/v1/health | jq
+  # Expected: {"status": "ok", "services": {"database": "healthy", "ollama": "healthy"}}
+
+Step 5: Access Service UIs
+  1. API Documentation: http://localhost:8000/docs
+     - Verify: Swagger UI loads with 3 endpoints
+     - Test: Try "GET /health" → Execute → 200 response
+
+  2. Airflow Dashboard: http://localhost:8080
+     - Login: admin / admin
+     - Verify: hello_world_week1 DAG visible
+     - Test: Trigger DAG manually → Tasks succeed
+
+  3. OpenSearch Dashboards: http://localhost:5601
+     - Verify: Dashboard loads without errors
+     - Test: Navigate to "Dev Tools" → Console works
+
+Step 6: Run Tests
+  $ make test
+  # OR: uv run pytest
+  # Expected: All tests pass
+
+  $ make test-cov
+  # OR: uv run pytest --cov=src --cov-report=html
+  # Expected: Coverage report generated at htmlcov/index.html
+
+Step 7: Run Jupyter Notebook (Learning)
+  $ uv run jupyter notebook notebooks/week1/week1_setup.ipynb
+  # Follow interactive Week 1 setup guide
+
+Post-Deployment Validation:
+----------------------------
+[ ] API health endpoint returns 200: curl http://localhost:8000/api/v1/health
+[ ] PostgreSQL accepting connections: psql -h localhost -p 5432 -U rag_user -d rag_db
+[ ] OpenSearch cluster healthy: curl http://localhost:9200/_cluster/health
+[ ] Ollama service running: curl http://localhost:11434/api/tags
+[ ] Airflow webserver accessible: curl http://localhost:8080/health
+[ ] Airflow DAG visible in UI: Navigate to http://localhost:8080/dags
+[ ] All Docker containers healthy: docker compose ps (all show "healthy")
+[ ] No error logs: docker compose logs | grep ERROR (should be empty)
+
+Common Issues & Solutions:
+---------------------------
+Issue: Port already in use
+  Solution: Stop conflicting services
+  $ lsof -ti:8000 | xargs kill -9  # Kill process on port 8000
+  $ docker compose down && docker compose up -d
+
+Issue: Services stuck in "starting" state
+  Solution: Check logs for specific service
+  $ docker compose logs postgres
+  $ docker compose logs opensearch
+  $ docker compose logs api
+
+Issue: Database connection failed
+  Solution: Verify PostgreSQL is healthy
+  $ docker compose ps postgres  # Should show "healthy"
+  $ docker compose logs postgres  # Check for errors
+  $ docker compose restart postgres
+
+Issue: Memory limit errors (OpenSearch)
+  Solution: Increase Docker Desktop memory allocation
+  - Docker Desktop → Settings → Resources → Memory → 8GB+
+  - Restart Docker Desktop
+
+Issue: API health check fails
+  Solution: Check dependent services
+  $ curl http://localhost:9200/_cluster/health  # OpenSearch
+  $ docker compose logs api  # Check API logs
+
+Cleanup Commands:
+-----------------
+Stop services (keep data):
+  $ make stop
+  # OR: docker compose down
+
+Complete cleanup (delete all data):
+  $ make clean
+  # OR: docker compose down -v
+  # WARNING: This deletes all Docker volumes (postgres_data, opensearch_data, etc.)
+
+Restart services:
+  $ make restart
+  # OR: docker compose restart
+
+View logs:
+  $ make logs
+  # OR: docker compose logs -f
+  # OR: docker compose logs -f api  (specific service)
+
+Logs and Monitoring:
+--------------------
+View real-time logs:
+  $ docker compose logs -f
+
+View specific service logs:
+  $ docker compose logs -f api
+  $ docker compose logs -f postgres
+  $ docker compose logs -f airflow
+
+Log locations:
+  - API logs: stdout (captured by Docker)
+  - Airflow logs: ./airflow/logs/ directory (mounted volume)
+  - PostgreSQL logs: Docker volume postgres_data
+  - OpenSearch logs: Docker volume opensearch_data
+
+Week 1 Success Criteria:
+-------------------------
+Deployment is successful when:
+[ ] All 6 services running: api, postgres, opensearch, opensearch-dashboards, airflow, ollama
+[ ] All services show "healthy" status in docker compose ps
+[ ] API /health endpoint returns status="ok" with all services healthy
+[ ] Swagger UI accessible at http://localhost:8000/docs
+[ ] Airflow UI accessible at http://localhost:8080 (login: admin/admin)
+[ ] OpenSearch Dashboards accessible at http://localhost:5601
+[ ] hello_world_week1 DAG visible and can be triggered in Airflow UI
+[ ] All tests pass: uv run pytest
+[ ] No errors in logs: docker compose logs | grep -i error (only warnings expected)
+
+Next Steps After Week 1:
+-------------------------
+Week 1 establishes infrastructure only. Future weeks will add:
+- Week 2: arXiv API integration, PDF parsing, data ingestion pipeline
+- Week 3: OpenSearch indexing, BM25 keyword search
+- Week 4: Vector embeddings, hybrid search (BM25 + semantic)
+- Week 5: LLM integration, complete RAG pipeline, Gradio UI
+- Week 6: Langfuse observability, caching, A/B testing
+- Week 7: Agentic RAG, Telegram bot integration
+
+For production deployment (future weeks), additional steps required:
+- Kubernetes manifests for container orchestration
+- Secret management (AWS Secrets Manager, HashiCorp Vault)
+- CI/CD pipeline (GitHub Actions, GitLab CI)
+- Monitoring (Prometheus, Grafana)
+- Logging (ELK stack, CloudWatch)
+- Load balancing (Nginx, AWS ALB)
+- TLS/SSL certificates (Let's Encrypt, ACM)
+- Database backups and disaster recovery
+- Auto-scaling policies
+- Security hardening (network policies, IAM roles)
+
+
+END OF DOCUMENT
+===============

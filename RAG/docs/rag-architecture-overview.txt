@@ -1,0 +1,365 @@
+# RAG ARCHITECTURE OVERVIEW
+
+Complete overview of the RAG (Retrieval-Augmented Generation) system architecture across all weeks.
+
+## System Architecture Evolution
+
+### Week 1: Foundation Layer
+**Infrastructure Setup**
+
+Components:
+- FastAPI: REST API server with async support
+- PostgreSQL 16: Relational database for paper metadata
+- OpenSearch 2.19: Search engine (prepared, not used yet)
+- Apache Airflow 3.0: Workflow orchestration
+- Ollama: Local LLM server (prepared, not used yet)
+
+Architecture Pattern:
+```
+API Layer (FastAPI Routers)
+    ↓
+Dependency Injection
+    ↓
+Repository Layer
+    ↓
+Database Layer (PostgreSQL)
+```
+
+Key Learning: Production-ready infrastructure setup with Docker Compose
+
+### Week 2: Data Ingestion Layer
+**arXiv Paper Fetching**
+
+New Components:
+- ArxivClient: Rate-limited API integration
+- PDFParserService: Docling-powered PDF parsing
+- MetadataFetcher: Orchestrates fetch → parse → store workflow
+
+Architecture Addition:
+```
+Airflow DAG (Scheduled)
+    ↓
+ArxivClient → Fetch papers
+    ↓
+PDFParserService → Parse PDFs
+    ↓
+MetadataFetcher → Store in PostgreSQL
+```
+
+Key Learning: Automated data pipelines with retry logic and error handling
+
+### Week 3: Retrieval Layer (Keyword)
+**BM25 Search Implementation**
+
+New Components:
+- OpenSearchService: Index management and search
+- QueryBuilder: BM25 query construction
+- SearchRouter: Search API endpoints
+
+Architecture Addition:
+```
+User Query → SearchRouter
+    ↓
+QueryBuilder → BM25 Query DSL
+    ↓
+OpenSearchService → Search Papers
+    ↓
+Ranked Results (by relevance score)
+```
+
+Key Learning: Professional keyword search with filtering and scoring
+
+### Week 4: Retrieval Layer (Hybrid)
+**Semantic Search with Embeddings**
+
+New Components:
+- JinaEmbeddingsClient: Vector embeddings via API
+- TextChunker: Section-based document chunking
+- HybridIndexer: Combines text + vectors
+- HybridSearchRouter: Unified search API
+
+Architecture Addition:
+```
+Papers → TextChunker → Chunks
+    ↓
+JinaEmbeddingsClient → Vector Embeddings
+    ↓
+HybridIndexer → OpenSearch (text + knn_vector)
+
+Query:
+User Query → Generate embedding
+    ↓
+Hybrid Search (BM25 + Vector)
+    ↓
+RRF Fusion (Reciprocal Rank Fusion)
+    ↓
+Final Ranked Results
+```
+
+Key Learning: Combining keyword and semantic search for best results
+
+### Week 5: Generation Layer
+**Complete RAG Pipeline**
+
+New Components:
+- OllamaService: LLM client for generation
+- RAG System Prompt: Optimized for academic papers
+- Streaming Support: Server-Sent Events
+- Gradio UI: Interactive chat interface
+
+Complete RAG Flow:
+```
+User Question
+    ↓
+Hybrid Search → Retrieve Relevant Papers
+    ↓
+Context Assembly → Top K chunks
+    ↓
+Prompt Engineering → System + Context + Question
+    ↓
+LLM Generation (Ollama) → Stream response
+    ↓
+User sees answer with citations
+```
+
+Key Learning: End-to-end RAG with local LLM and streaming
+
+### Week 6: Production Layer
+**Monitoring & Optimization**
+
+New Components:
+- LangfuseTracer: End-to-end observability
+- RedisCache: High-speed query caching
+- Performance Metrics: Latency, costs, cache hit rates
+
+Architecture Addition:
+```
+Every RAG Operation:
+    ↓
+LangfuseTracer → Log all steps
+    ↓
+Check RedisCache → Cache hit? Return cached
+    ↓
+If miss: Execute RAG pipeline
+    ↓
+Store result in cache (1 hour TTL)
+    ↓
+Log metrics to Langfuse
+```
+
+Monitoring Dashboard:
+- Search performance (latency, relevance)
+- LLM usage (tokens, costs)
+- Cache performance (hit rate, speedup)
+- End-to-end traces
+
+Key Learning: Production observability and optimization
+
+### Week 7: Intelligence Layer
+**Agentic RAG with Decision Making**
+
+New Components:
+- LangGraph Workflow: State-based agent orchestration
+- GuardrailNode: Query validation
+- GradeDocumentsNode: Relevance evaluation
+- RewriteQueryNode: Query refinement
+- Telegram Bot: Mobile access
+
+Agentic RAG Flow:
+```
+User Question
+    ↓
+GuardrailNode → Is question in-domain?
+    ├─ No → Polite refusal
+    └─ Yes → Continue
+        ↓
+    RetrieveNode → Hybrid search
+        ↓
+    GradeDocumentsNode → Grade each document
+        ├─ All irrelevant → RewriteQueryNode → Retry
+        └─ Some relevant → Continue
+            ↓
+        GenerateAnswerNode → LLM generation
+            ↓
+        Response with reasoning transparency
+```
+
+Decision Nodes:
+1. **Guardrail**: Domain boundary detection
+2. **Grade**: Semantic relevance scoring
+3. **Rewrite**: Adaptive query refinement
+4. **Generate**: Context-aware answer generation
+
+Key Learning: Intelligent agents that adapt retrieval strategies
+
+## Complete Architecture (Week 7)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    User Interface Layer                  │
+│  • Gradio Web UI (http://localhost:7861)                │
+│  • Telegram Bot (Mobile)                                │
+│  • FastAPI Swagger (http://localhost:8000/docs)         │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│                    API Layer (FastAPI)                   │
+│  • /api/v1/ask (Standard RAG)                           │
+│  • /api/v1/stream (Streaming RAG)                       │
+│  • /api/v1/agentic-ask (Agentic RAG)                    │
+│  • /api/v1/hybrid-search (Search only)                  │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│              Intelligence Layer (Agents)                 │
+│  • LangGraph State Machine                              │
+│  • Decision Nodes (Guardrail, Grade, Rewrite)          │
+│  • Reasoning Transparency                               │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│              Observability Layer (Langfuse)              │
+│  • Trace all operations                                 │
+│  • Performance metrics                                  │
+│  • Cost tracking                                        │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│                   Caching Layer (Redis)                  │
+│  • Exact-match cache (1 hour TTL)                       │
+│  • 150-400x speedup for repeated queries                │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌───────────────────────────┬─────────────────────────────┐
+│    Retrieval Layer        │    Generation Layer         │
+│  • Hybrid Search          │  • Ollama LLM               │
+│  • BM25 (keyword)         │  • llama3.2:3b-instruct-fp16│
+│  • Vector (semantic)      │  • Streaming support        │
+│  • RRF Fusion             │  • System prompts           │
+└───────────────────────────┴─────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│                    Storage Layer                         │
+│  • OpenSearch: Hybrid index (text + vectors)            │
+│  • PostgreSQL: Paper metadata                           │
+│  • Redis: Cache storage                                 │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│                 Data Ingestion Layer                     │
+│  • Airflow DAGs (Scheduled workflows)                   │
+│  • arXiv API Client (Rate-limited)                      │
+│  • Docling PDF Parser                                   │
+│  • Text Chunking & Embeddings                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Key Design Patterns
+
+### 1. Layered Architecture
+Clean separation of concerns: API → Service → Repository → Storage
+
+### 2. Dependency Injection
+All services injected via FastAPI dependencies for testability
+
+### 3. Factory Pattern
+Service creation abstracted: `make_database()`, `make_opensearch_service()`
+
+### 4. Repository Pattern
+Data access abstracted: `PaperRepository` encapsulates DB operations
+
+### 5. Streaming Pattern
+Server-Sent Events for real-time LLM response streaming
+
+### 6. Caching Pattern
+Transparent caching with graceful fallback if Redis unavailable
+
+### 7. State Machine Pattern
+LangGraph for complex agent decision flows
+
+### 8. Observer Pattern
+Langfuse tracing for observability without coupling
+
+## Technology Choices Rationale
+
+**FastAPI over Flask/Django:**
+- Native async support
+- Automatic OpenAPI docs
+- Pydantic validation
+- Modern Python features
+
+**OpenSearch over Elasticsearch:**
+- Open source license
+- Hybrid search support (BM25 + kNN)
+- No licensing concerns
+
+**Ollama over OpenAI API:**
+- Complete data privacy (local)
+- No API costs
+- Offline capability
+- Educational value
+
+**PostgreSQL over MongoDB:**
+- ACID transactions
+- Structured paper metadata
+- Better for relational queries
+
+**UV over pip/poetry:**
+- Faster dependency resolution
+- Better lock file management
+- Modern Python tooling
+
+**Docker Compose over K8s:**
+- Simpler for development
+- Easier to understand
+- Sufficient for learning
+- Lower barrier to entry
+
+## Performance Characteristics
+
+### Search Latency
+- BM25 only: ~50-100ms
+- Hybrid (BM25 + Vector): ~100-200ms
+- With caching: ~5-10ms (150-400x faster)
+
+### LLM Generation
+- Cold start: 2-3 seconds
+- Streaming: First token in ~500ms
+- Context size: 2048 tokens typical
+
+### Indexing Throughput
+- PDF parsing: ~2-5 seconds per paper
+- Embedding generation: ~100ms per chunk
+- Index insertion: ~50ms per chunk
+
+## Scalability Considerations
+
+**Current (Development):**
+- Single machine deployment
+- ~1000 papers indexed
+- Suitable for learning
+
+**Production (Future):**
+- Horizontal scaling of API servers
+- OpenSearch cluster (3+ nodes)
+- Redis cluster for distributed caching
+- Kubernetes orchestration
+- Load balancer (Nginx/Traefik)
+- Monitoring (Prometheus + Grafana)
+
+## Security Layers
+
+1. **Environment Variables**: All secrets in .env (gitignored)
+2. **API Authentication**: Can add JWT/OAuth (not implemented)
+3. **Rate Limiting**: Can add per-user limits (not implemented)
+4. **Input Validation**: Pydantic schemas validate all inputs
+5. **SQL Injection**: Protected by SQLAlchemy ORM
+6. **XSS Prevention**: FastAPI auto-escapes responses
+
+## References
+
+- Week 1 Blog: Infrastructure That Powers RAG Systems
+- Week 3 Blog: Search Foundation Every RAG System Needs
+- Week 4 Blog: Chunking Strategy That Makes Hybrid Search Work
+- Week 5 Blog: The Complete RAG System
+- Week 7 Blog: Agentic RAG with LangGraph and Telegram

@@ -1,0 +1,597 @@
+# SECURITY BEST PRACTICES
+
+Security guidelines and best practices for the RAG training project.
+
+## Environment Variables & Secrets
+
+### Critical Rules
+
+**NEVER commit sensitive data:**
+- ✅ .env.example (template with placeholders)
+- ✅ .env.test (test values only)
+- ❌ .env (contains real secrets)
+- ❌ credentials.json
+- ❌ API keys, tokens, passwords
+
+### .env File Management
+
+**Proper .env structure:**
+```bash
+# .env (NEVER COMMIT)
+POSTGRES_PASSWORD=actual_secure_password_here
+JINA_API_KEY=jina_actual_key_here
+TELEGRAM__BOT_TOKEN=actual_bot_token_here
+LANGFUSE__SECRET_KEY=actual_secret_here
+
+# .env.example (SAFE TO COMMIT)
+POSTGRES_PASSWORD=changeme
+JINA_API_KEY=your_jina_key_here
+TELEGRAM__BOT_TOKEN=your_telegram_token
+LANGFUSE__SECRET_KEY=your_langfuse_secret
+```
+
+### .gitignore Protection
+
+**Root .gitignore must include:**
+```gitignore
+# Environment files
+.env
+*.env
+!.env.example
+!.env.test
+
+# Credentials
+**/credentials.json
+**/secrets.json
+**/*secret*
+**/*password*
+**/*token*
+**/api_keys*
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+```
+
+### Checking for Leaked Secrets
+
+**Before committing:**
+```bash
+# 1. Check what will be committed
+git diff --cached
+
+# 2. Look for secrets
+git diff --cached | grep -i "password\|secret\|token\|key"
+
+# 3. Check specific file types
+git diff --cached -- "*.env"
+
+# 4. Verify .env is ignored
+git status | grep .env
+# Should NOT appear in untracked files
+```
+
+**If accidentally committed:**
+```bash
+# Remove from git history
+git filter-branch --force --index-filter \
+  "git rm --cached --ignore-unmatch .env" \
+  --prune-empty --tag-name-filter cat -- --all
+
+# Force push (WARNING: destructive)
+git push origin --force --all
+git push origin --force --tags
+
+# Rotate ALL secrets immediately
+# (They're now public even if removed from git)
+```
+
+## API Security
+
+### Input Validation
+
+**Always validate user inputs:**
+```python
+from pydantic import BaseModel, Field, validator
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    limit: int = Field(10, ge=1, le=100)
+
+    @validator('query')
+    def sanitize_query(cls, v):
+        # Prevent injection attacks
+        forbidden = ['<script', 'javascript:', 'onerror=']
+        for pattern in forbidden:
+            if pattern in v.lower():
+                raise ValueError('Invalid characters in query')
+        return v
+```
+
+### Rate Limiting (Future Implementation)
+
+**Recommended for production:**
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+@app.post("/api/v1/ask")
+@limiter.limit("10/minute")
+async def ask_question(request: AskRequest):
+    # Implementation
+    pass
+```
+
+### Authentication (Future Implementation)
+
+**For production deployment:**
+```python
+from fastapi.security import HTTPBearer
+from jose import JWTError, jwt
+
+security = HTTPBearer()
+
+async def verify_token(credentials: HTTPAuthorizationCredentials):
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            SECRET_KEY,
+            algorithms=["HS256"]
+        )
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+```
+
+## Database Security
+
+### Connection Security
+
+**Use connection pooling safely:**
+```python
+# In config.py
+class Settings(BaseSettings):
+    postgres_database_url: str
+    postgres_pool_size: int = 5
+    postgres_max_overflow: int = 10
+
+    @validator('postgres_database_url')
+    def validate_db_url(cls, v):
+        # Ensure SSL in production
+        if 'production' in v and 'sslmode=require' not in v:
+            raise ValueError('Production DB must use SSL')
+        return v
+```
+
+### SQL Injection Prevention
+
+**Using SQLAlchemy ORM (safe):**
+```python
+# ✅ SAFE: Parameterized query
+paper = session.query(Paper).filter(
+    Paper.arxiv_id == arxiv_id
+).first()
+
+# ❌ UNSAFE: String concatenation
+query = f"SELECT * FROM papers WHERE arxiv_id = '{arxiv_id}'"
+session.execute(query)  # NEVER DO THIS
+```
+
+### Password Hashing
+
+**If implementing user authentication:**
+```python
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+```
+
+## Docker Security
+
+### Container Security
+
+**Best practices for compose.yml:**
+```yaml
+services:
+  api:
+    # 1. Don't run as root
+    user: "1000:1000"
+
+    # 2. Read-only filesystem where possible
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    # 3. Limit capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    # 4. No privileged mode
+    privileged: false
+
+    # 5. Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+```
+
+### Image Security
+
+**Dockerfile best practices:**
+```dockerfile
+# Use specific versions, not 'latest'
+FROM python:3.12.8-slim
+
+# Run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+USER appuser
+
+# Scan for vulnerabilities
+# docker scan your-image:tag
+```
+
+### Network Security
+
+**Isolate services:**
+```yaml
+services:
+  postgres:
+    networks:
+      - backend
+    # Not exposed to host
+
+  api:
+    networks:
+      - backend
+      - frontend
+    ports:
+      - "8000:8000"  # Only API exposed
+```
+
+## OpenSearch Security
+
+### Development vs Production
+
+**Development (current):**
+```yaml
+opensearch:
+  environment:
+    - "DISABLE_SECURITY_PLUGIN=true"  # OK for development
+```
+
+**Production (recommended):**
+```yaml
+opensearch:
+  environment:
+    - "DISABLE_SECURITY_PLUGIN=false"
+    - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}"
+  # Use TLS certificates
+  volumes:
+    - ./certs:/usr/share/opensearch/config/certificates:ro
+```
+
+### Access Control
+
+**Implement role-based access:**
+```python
+# For production
+class OpenSearchClient:
+    def __init__(self, host: str, username: str, password: str):
+        self.client = OpenSearch(
+            hosts=[host],
+            http_auth=(username, password),
+            use_ssl=True,
+            verify_certs=True,
+        )
+```
+
+## LLM Security
+
+### Prompt Injection Prevention
+
+**Validate and sanitize prompts:**
+```python
+def sanitize_prompt(user_input: str) -> str:
+    # Remove potential injection attempts
+    forbidden_patterns = [
+        "ignore previous instructions",
+        "system:",
+        "assistant:",
+        "<|system|>",
+        "<|assistant|>",
+    ]
+
+    for pattern in forbidden_patterns:
+        if pattern.lower() in user_input.lower():
+            raise ValueError("Invalid prompt detected")
+
+    return user_input[:1000]  # Limit length
+```
+
+### Output Filtering
+
+**Filter sensitive data from LLM responses:**
+```python
+import re
+
+def filter_sensitive_data(response: str) -> str:
+    # Remove potential leaked credentials
+    patterns = [
+        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Emails
+        r'\b(?:\d{3}-\d{2}-\d{4})\b',  # SSN
+        r'\b(?:\d{4}[- ]?){3}\d{4}\b',  # Credit cards
+    ]
+
+    filtered = response
+    for pattern in patterns:
+        filtered = re.sub(pattern, '[REDACTED]', filtered)
+
+    return filtered
+```
+
+### Rate Limiting LLM Usage
+
+**Prevent abuse:**
+```python
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+class LLMRateLimiter:
+    def __init__(self, max_requests: int = 10, window: int = 60):
+        self.max_requests = max_requests
+        self.window = timedelta(seconds=window)
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, user_id: str) -> bool:
+        now = datetime.now()
+        cutoff = now - self.window
+
+        # Remove old requests
+        self.requests[user_id] = [
+            req for req in self.requests[user_id]
+            if req > cutoff
+        ]
+
+        # Check limit
+        if len(self.requests[user_id]) >= self.max_requests:
+            return False
+
+        self.requests[user_id].append(now)
+        return True
+```
+
+## Telegram Bot Security
+
+### Token Protection
+
+**Never expose bot token:**
+```python
+# ✅ GOOD: From environment
+BOT_TOKEN = os.getenv('TELEGRAM__BOT_TOKEN')
+
+# ❌ BAD: Hardcoded
+BOT_TOKEN = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+```
+
+### User Authorization
+
+**Whitelist allowed users:**
+```python
+ALLOWED_USER_IDS = set([
+    123456789,  # Your Telegram user ID
+])
+
+async def authorized_only(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("Unauthorized")
+        return
+    # Continue with command
+```
+
+### Input Validation
+
+**Validate Telegram messages:**
+```python
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message.text
+
+    # Length limit
+    if len(message) > 1000:
+        await update.message.reply_text("Message too long")
+        return
+
+    # Sanitize
+    message = message.strip()
+
+    # Process
+    await process_question(message)
+```
+
+## Dependency Security
+
+### Regular Updates
+
+**Check for vulnerabilities:**
+```bash
+# Using pip-audit (install first)
+uv pip install pip-audit
+uv run pip-audit
+
+# Update dependencies
+uv sync --upgrade
+```
+
+### Lock Files
+
+**Always commit lock files:**
+```bash
+# uv.lock should be in git
+git add uv.lock
+git commit -m "Update dependencies"
+```
+
+### Vulnerability Scanning
+
+**Scan Docker images:**
+```bash
+# Using docker scan
+docker scan week-1-api:latest
+
+# Using trivy
+trivy image week-1-api:latest
+```
+
+## Logging & Monitoring Security
+
+### Sensitive Data in Logs
+
+**Never log sensitive information:**
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ✅ GOOD
+logger.info(f"User query: {query[:50]}...")
+
+# ❌ BAD
+logger.info(f"API key: {api_key}")  # NEVER
+logger.info(f"Password: {password}")  # NEVER
+```
+
+### Log Sanitization
+
+**Implement log filters:**
+```python
+class SensitiveDataFilter(logging.Filter):
+    def filter(self, record):
+        # Redact sensitive patterns
+        if hasattr(record, 'msg'):
+            record.msg = re.sub(
+                r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+                '[EMAIL]',
+                str(record.msg)
+            )
+        return True
+
+logger.addFilter(SensitiveDataFilter())
+```
+
+## Production Deployment Checklist
+
+### Pre-Deployment Security
+
+- [ ] All secrets in environment variables
+- [ ] No hardcoded credentials in code
+- [ ] .env files in .gitignore
+- [ ] SSL/TLS certificates configured
+- [ ] Database uses SSL connections
+- [ ] OpenSearch security enabled
+- [ ] Rate limiting implemented
+- [ ] Authentication implemented
+- [ ] Input validation on all endpoints
+- [ ] CORS configured properly
+- [ ] Security headers set
+- [ ] Logging configured (no sensitive data)
+- [ ] Dependencies scanned for vulnerabilities
+- [ ] Docker images scanned
+- [ ] Backup strategy implemented
+
+### Security Headers
+
+**Add to FastAPI app:**
+```python
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://yourdomain.com"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["yourdomain.com", "*.yourdomain.com"]
+)
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+```
+
+## Incident Response
+
+### If Secrets Are Leaked
+
+1. **Immediately rotate all secrets:**
+   ```bash
+   # Change passwords
+   # Regenerate API keys
+   # Get new bot tokens
+   ```
+
+2. **Remove from git history:**
+   ```bash
+   git filter-branch (see above)
+   ```
+
+3. **Notify affected services:**
+   - Jina AI (new API key)
+   - Telegram (revoke/regenerate token)
+   - Database (change password)
+
+4. **Document the incident:**
+   - What was leaked
+   - When discovered
+   - Actions taken
+   - Prevention measures
+
+### Security Contacts
+
+- Project Owner: [Your contact]
+- GitHub Security: https://github.com/security
+- Dependency Issues: Check project repos
+
+## Regular Security Maintenance
+
+**Monthly tasks:**
+- [ ] Update dependencies: `uv sync --upgrade`
+- [ ] Scan for vulnerabilities: `pip-audit`
+- [ ] Review logs for suspicious activity
+- [ ] Rotate secrets (if applicable)
+- [ ] Review access permissions
+
+**Quarterly tasks:**
+- [ ] Security audit of codebase
+- [ ] Review and update .gitignore
+- [ ] Check for outdated dependencies
+- [ ] Update security documentation
+
+## Resources
+
+- OWASP Top 10: https://owasp.org/www-project-top-ten/
+- FastAPI Security: https://fastapi.tiangolo.com/tutorial/security/
+- Docker Security: https://docs.docker.com/engine/security/
+- Python Security: https://python.readthedocs.io/en/stable/library/security_warnings.html

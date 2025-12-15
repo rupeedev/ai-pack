@@ -1,0 +1,618 @@
+# DEVELOPMENT WORKFLOW GUIDE
+
+Complete guide for working with the RAG training project.
+
+## Quick Start Workflow
+
+### Starting a Week
+
+```bash
+# 1. Navigate to the week directory
+cd /Users/rupeshpanwar/Documents/AI-Projects/RAG/week-X
+
+# 2. Set up environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# 3. Install dependencies
+uv sync
+
+# 4. Start services
+make start
+# or: docker compose up --build -d
+
+# 5. Wait for services to be healthy (2-3 minutes)
+make health
+
+# 6. Check service status
+make status
+# or: docker compose ps
+
+# 7. View logs
+make logs
+# or: docker compose logs -f
+```
+
+### Stopping a Week
+
+```bash
+# Stop services (keeps data)
+make stop
+# or: docker compose down
+
+# Stop and remove all data
+make clean
+# or: docker compose down -v
+```
+
+## Development Commands
+
+### Using Makefile (Recommended)
+
+```bash
+make help         # Show all available commands
+make start        # Start all services
+make stop         # Stop all services
+make restart      # Restart all services
+make status       # Show service status
+make logs         # Show and follow logs
+make health       # Check all services health
+
+make setup        # Install dependencies (uv sync)
+make format       # Format code (ruff format)
+make lint         # Lint and type check (ruff + mypy)
+make test         # Run tests (pytest)
+make test-cov     # Run tests with coverage report
+make clean        # Stop services and remove volumes
+```
+
+### Direct Docker Commands
+
+```bash
+# Service management
+docker compose up --build -d         # Build and start
+docker compose ps                    # Status
+docker compose logs -f               # Follow logs
+docker compose logs -f [service]     # Service-specific logs
+docker compose down                  # Stop services
+docker compose down -v               # Stop and remove volumes
+docker compose restart [service]     # Restart specific service
+
+# Debugging
+docker compose exec api bash         # Shell into API container
+docker compose exec postgres psql -U rag_user -d rag_db  # PostgreSQL shell
+```
+
+### UV Package Manager
+
+```bash
+# Install dependencies
+uv sync                    # Install from lock file
+uv sync --frozen           # Strict lock file install
+uv add package             # Add new package
+uv remove package          # Remove package
+
+# Run commands
+uv run pytest              # Run tests
+uv run ruff format         # Format code
+uv run mypy src/           # Type check
+uv run python script.py    # Run Python script
+
+# Jupyter notebooks
+uv run jupyter notebook notebooks/weekX/
+```
+
+## Week-by-Week Workflow
+
+### Week 1: Infrastructure
+
+**Goal:** Set up and verify all services
+
+```bash
+cd week-1
+
+# 1. Start services
+make start
+
+# 2. Verify health
+curl http://localhost:8000/health
+
+# 3. Test API
+open http://localhost:8000/docs
+
+# 4. Check Airflow
+open http://localhost:8080
+# Credentials in: airflow/simple_auth_manager_passwords.json.generated
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week1/week1_setup.ipynb
+```
+
+**Key Files to Explore:**
+- src/main.py - Application entry point
+- src/routers/ping.py - Health check endpoints
+- src/models/paper.py - Database schema
+- compose.yml - Service orchestration
+
+### Week 2: Data Ingestion
+
+**Goal:** Fetch and parse arXiv papers
+
+```bash
+cd week-2
+
+# 1. Start services (includes Week 1 setup)
+make start
+
+# 2. Trigger Airflow DAG
+# Go to http://localhost:8080
+# Enable and trigger "arxiv_paper_ingestion"
+
+# 3. Check database
+docker compose exec postgres psql -U rag_user -d rag_db
+# SELECT COUNT(*) FROM papers;
+
+# 4. Work through notebook
+uv run jupyter notebook notebooks/week2/week2_arxiv_integration.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/arxiv/client.py - arXiv API integration
+- src/services/pdf_parser/docling.py - PDF parsing
+- src/services/metadata_fetcher.py - Orchestration
+- airflow/dags/arxiv_paper_ingestion.py - Workflow
+
+### Week 3: BM25 Search
+
+**Goal:** Implement keyword search
+
+```bash
+cd week-3
+
+# 1. Start services
+make start
+
+# 2. Index papers to OpenSearch
+# (Use notebook or API endpoint)
+
+# 3. Test search
+curl -X POST http://localhost:8000/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "machine learning", "limit": 5}'
+
+# 4. Explore OpenSearch Dashboards
+open http://localhost:5601
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week3/week3_opensearch.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/opensearch/client.py - OpenSearch operations
+- src/services/opensearch/query_builder.py - BM25 queries
+- src/routers/search.py - Search API
+
+### Week 4: Hybrid Search
+
+**Goal:** Add semantic search with embeddings
+
+```bash
+cd week-4
+
+# 1. Configure Jina API key
+echo "JINA_API_KEY=your_key_here" >> .env
+
+# 2. Start services
+make start
+
+# 3. Index papers with embeddings
+# (Uses chunking + vector generation)
+
+# 4. Test hybrid search
+curl -X POST http://localhost:8000/api/v1/hybrid-search/ \
+  -H "Content-Type: application/json" \
+  -d '{"query": "attention mechanisms", "search_mode": "hybrid", "limit": 5}'
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week4/week4_hybrid_search.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/embeddings/jina_client.py - Embeddings
+- src/services/indexing/text_chunker.py - Chunking
+- src/services/indexing/hybrid_indexer.py - Indexing
+- src/routers/hybrid_search.py - Hybrid API
+
+### Week 5: Complete RAG
+
+**Goal:** Add LLM generation
+
+```bash
+cd week-5
+
+# 1. Pull Ollama model
+docker compose exec ollama ollama pull llama3.2:3b-instruct-fp16
+
+# 2. Start services
+make start
+
+# 3. Test RAG endpoint
+curl -X POST http://localhost:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is attention mechanism?"}'
+
+# 4. Launch Gradio UI
+uv run python gradio_launcher.py
+open http://localhost:7861
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week5/week5_complete_rag_system.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/ollama/client.py - LLM client
+- src/services/ollama/prompts/rag_system.txt - System prompt
+- src/routers/ask.py - RAG endpoints
+- src/gradio_app.py - UI
+
+### Week 6: Production Features
+
+**Goal:** Add monitoring and caching
+
+```bash
+cd week-6
+
+# 1. Configure Langfuse (optional)
+echo "LANGFUSE__PUBLIC_KEY=..." >> .env
+echo "LANGFUSE__SECRET_KEY=..." >> .env
+
+# 2. Start services (includes Langfuse + Redis)
+make start
+
+# 3. Test with caching
+curl -X POST http://localhost:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Explain transformers"}'
+
+# Test cache hit (same query)
+curl -X POST http://localhost:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Explain transformers"}'
+
+# 4. View traces
+open http://localhost:3000
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week6/week6_cache_testing.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/langfuse/tracer.py - Tracing
+- src/services/cache/client.py - Redis caching
+- src/routers/ask.py - Instrumented endpoints
+
+### Week 7: Agentic RAG
+
+**Goal:** Add intelligent agents and Telegram bot
+
+```bash
+cd week-7
+
+# 1. Configure Telegram bot token
+echo "TELEGRAM__BOT_TOKEN=your_token" >> .env
+
+# 2. Start services
+make start
+
+# 3. Test agentic endpoint
+curl -X POST http://localhost:8000/api/v1/agentic-ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Explain transformers"}'
+
+# 4. Start Telegram bot
+# (Bot starts automatically with services)
+# Message your bot on Telegram: /start
+
+# 5. Work through notebook
+uv run jupyter notebook notebooks/week7/week7_agentic_rag.ipynb
+```
+
+**Key Files to Explore:**
+- src/services/agents/agentic_rag.py - LangGraph workflow
+- src/services/agents/nodes/ - Agent nodes
+- src/services/telegram/bot.py - Telegram integration
+- src/routers/agentic_ask.py - Agentic API
+
+## Testing Workflow
+
+### Unit Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test file
+uv run pytest tests/unit/test_config.py
+
+# Run with coverage
+make test-cov
+
+# Run and show coverage report
+uv run pytest --cov=src --cov-report=html
+open htmlcov/index.html
+```
+
+### Integration Tests
+
+```bash
+# Run integration tests (requires services running)
+uv run pytest tests/integration/
+
+# Run API tests
+uv run pytest tests/api/
+```
+
+### Manual API Testing
+
+```bash
+# Using curl
+curl http://localhost:8000/health
+
+# Using httpie (if installed)
+http POST localhost:8000/api/v1/search query="machine learning"
+
+# Using Python requests
+uv run python
+>>> import requests
+>>> requests.get("http://localhost:8000/health").json()
+```
+
+## Code Quality Workflow
+
+### Formatting
+
+```bash
+# Format all code
+make format
+
+# Check what would change (dry run)
+uv run ruff format --check
+
+# Format specific file
+uv run ruff format src/main.py
+```
+
+### Linting
+
+```bash
+# Lint and auto-fix
+make lint
+
+# Lint only (no fix)
+uv run ruff check src/
+
+# Lint specific file
+uv run ruff check src/routers/ping.py
+```
+
+### Type Checking
+
+```bash
+# Type check all code
+uv run mypy src/
+
+# Type check specific file
+uv run mypy src/services/ollama/client.py
+```
+
+## Database Management
+
+### PostgreSQL Operations
+
+```bash
+# Connect to database
+docker compose exec postgres psql -U rag_user -d rag_db
+
+# Common queries
+SELECT COUNT(*) FROM papers;
+SELECT arxiv_id, title FROM papers LIMIT 5;
+SELECT * FROM papers WHERE arxiv_id = '2301.00001';
+
+# Backup database
+docker compose exec postgres pg_dump -U rag_user rag_db > backup.sql
+
+# Restore database
+cat backup.sql | docker compose exec -T postgres psql -U rag_user -d rag_db
+```
+
+### OpenSearch Operations
+
+```bash
+# Check cluster health
+curl http://localhost:9200/_cluster/health?pretty
+
+# List indices
+curl http://localhost:9200/_cat/indices?v
+
+# View index mapping
+curl http://localhost:9200/papers/_mapping?pretty
+
+# Count documents
+curl http://localhost:9200/papers/_count?pretty
+
+# Delete index
+curl -X DELETE http://localhost:9200/papers
+```
+
+## Debugging Workflow
+
+### View Logs
+
+```bash
+# All services
+make logs
+
+# Specific service
+docker compose logs -f api
+docker compose logs -f postgres
+docker compose logs -f opensearch
+
+# Last N lines
+docker compose logs --tail=100 api
+
+# Since timestamp
+docker compose logs --since=2024-01-01T00:00:00 api
+```
+
+### Enter Container
+
+```bash
+# API container
+docker compose exec api bash
+
+# Inside container
+ls -la /app
+cat /app/src/main.py
+python -c "import src.config; print(src.config.get_settings())"
+
+# PostgreSQL container
+docker compose exec postgres bash
+psql -U rag_user -d rag_db
+
+# OpenSearch container
+docker compose exec opensearch bash
+```
+
+### Check Service Health
+
+```bash
+# API
+curl http://localhost:8000/health
+
+# PostgreSQL
+docker compose exec postgres pg_isready
+
+# OpenSearch
+curl http://localhost:9200/_cluster/health
+
+# Ollama
+curl http://localhost:11434/api/version
+
+# Airflow
+curl http://localhost:8080/api/v2/monitor/health
+```
+
+## Git Workflow
+
+### Daily Workflow
+
+```bash
+# Check status
+git status
+
+# Create feature branch
+git checkout -b feature/your-feature
+
+# Make changes and commit
+git add .
+git commit -m "Add: your feature description"
+
+# Push to remote
+git push -u origin feature/your-feature
+
+# Merge to main (after review)
+git checkout main
+git merge feature/your-feature
+git push
+```
+
+### Viewing History
+
+```bash
+# Recent commits
+git log --oneline -10
+
+# Commits with files changed
+git log --stat
+
+# Search commits
+git log --grep="search term"
+
+# View specific commit
+git show 690cbcd
+```
+
+## Common Issues & Solutions
+
+### Port Already in Use
+
+```bash
+# Find process using port
+lsof -i :8000
+
+# Kill process
+kill -9 [PID]
+
+# Or change port in compose.yml
+```
+
+### Services Not Starting
+
+```bash
+# Check logs
+docker compose logs
+
+# Rebuild from scratch
+docker compose down -v
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Out of Disk Space
+
+```bash
+# Remove unused Docker resources
+docker system prune -a
+
+# Remove volumes
+docker volume prune
+```
+
+### Permission Errors
+
+```bash
+# Fix Airflow permissions
+chmod -R 777 airflow/logs
+
+# Fix file permissions
+sudo chown -R $USER:$USER .
+```
+
+## Performance Optimization
+
+### Docker Build Speed
+
+```bash
+# Use BuildKit
+export DOCKER_BUILDKIT=1
+docker compose build
+
+# Multi-stage caching
+docker compose build --parallel
+```
+
+### Dependency Installation
+
+```bash
+# Use UV cache
+export UV_CACHE_DIR=~/.cache/uv
+uv sync
+```
+
+## References
+
+- FastAPI Docs: https://fastapi.tiangolo.com/
+- OpenSearch Docs: https://opensearch.org/docs/
+- Ollama Docs: https://ollama.ai/docs/
+- Docker Compose: https://docs.docker.com/compose/
+- UV Docs: https://docs.astral.sh/uv/

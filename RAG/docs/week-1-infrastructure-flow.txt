@@ -1,0 +1,1598 @@
+WEEK 1 - RAG INFRASTRUCTURE ARCHITECTURE - ASCII FLOW DIAGRAM
+================================================================
+
+═══════════════════════════════════════════════════════════════════════════════
+                        MULTI-SERVICE DOCKER ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DOCKER COMPOSE ORCHESTRATION                        │
+│                              (compose.yml)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ orchestrates
+                                      ▼
+        ┌─────────────────────────────────────────────────────────┐
+        │           DOCKER BRIDGE NETWORK: rag-network            │
+        │                  (Service Discovery)                     │
+        └─────────────────────────────────────────────────────────┘
+                                      │
+        ┌─────────────────────────────┴─────────────────────────────┐
+        │                                                           │
+        ▼                                                           ▼
+┌───────────────┐                                          ┌────────────────┐
+│  PERSISTENT   │                                          │   PERSISTENT   │
+│    VOLUMES    │                                          │    VOLUMES     │
+├───────────────┤                                          ├────────────────┤
+│ postgres_data │                                          │opensearch_data │
+│opensearch_data│                                          │  ollama_data   │
+│  ollama_data  │                                          │ airflow_logs   │
+│ airflow_logs  │                                          └────────────────┘
+└───────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                           SERVICE DEPENDENCY GRAPH
+═══════════════════════════════════════════════════════════════════════════════
+
+                            ┌──────────────────┐
+                            │   PostgreSQL 16  │
+                            │    (postgres)    │
+                            │   Port: 5432     │
+                            │  ┌────────────┐  │
+                            │  │ Health:    │  │
+                            │  │ pg_isready │  │
+                            │  └────────────┘  │
+                            └────────┬─────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+         ┌──────────────────┐  ┌─────────┐  ┌──────────────┐
+         │   OpenSearch     │  │   API   │  │   Airflow    │
+         │      2.19        │  │ Service │  │    2.10.3    │
+         │   (opensearch)   │  │(rag-api)│  │ (rag-airflow)│
+         │   Port: 9200     │  │Port:8000│  │  Port: 8080  │
+         │  ┌────────────┐  │  │         │  │              │
+         │  │ Health:    │  │  │         │  │              │
+         │  │ /_cluster/ │  │  │         │  │              │
+         │  │   health   │  │  │         │  │              │
+         │  └────────────┘  │  │         │  │              │
+         └────────┬─────────┘  └────┬────┘  └──────┬───────┘
+                  │                 │              │
+                  │    ┌────────────┼──────────────┘
+                  │    │            │
+                  ▼    ▼            ▼
+         ┌──────────────────┐  ┌─────────────────┐
+         │   OpenSearch     │  │     Ollama      │
+         │   Dashboards     │  │      0.11       │
+         │  (rag-dashboards)│  │  (rag-ollama)   │
+         │   Port: 5601     │  │  Port: 11434    │
+         │  ┌────────────┐  │  │ ┌─────────────┐ │
+         │  │ Health:    │  │  │ │  Health:    │ │
+         │  │ /api/status│  │  │ │ ollama list │ │
+         │  └────────────┘  │  │ └─────────────┘ │
+         └──────────────────┘  └─────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        FASTAPI SERVICE INTERNAL ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+                        ┌──────────────────────────────┐
+                        │     CLIENT (Browser/curl)    │
+                        └──────────────┬───────────────┘
+                                       │ HTTP Request
+                                       │ (Port 8000)
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │     UVICORN ASGI SERVER      │
+                        │      (4 Worker Processes)    │
+                        └──────────────┬───────────────┘
+                                       │
+                                       ▼
+                   ┌────────────────────────────────────────┐
+                   │         FASTAPI APPLICATION            │
+                   │         (src/main.py)                  │
+                   │  ┌──────────────────────────────────┐  │
+                   │  │   LIFESPAN CONTEXT MANAGER       │  │
+                   │  │  ┌────────────────────────────┐  │  │
+                   │  │  │  Startup:                  │  │  │
+                   │  │  │  • Load Settings           │  │  │
+                   │  │  │  • Initialize Database     │  │  │
+                   │  │  │  • Setup Services          │  │  │
+                   │  │  └────────────────────────────┘  │  │
+                   │  │  ┌────────────────────────────┐  │  │
+                   │  │  │  Shutdown:                 │  │  │
+                   │  │  │  • Close Database Pool     │  │  │
+                   │  │  │  • Cleanup Resources       │  │  │
+                   │  │  └────────────────────────────┘  │  │
+                   │  └──────────────────────────────────┘  │
+                   └────────────────┬───────────────────────┘
+                                    │
+                   ┌────────────────┼────────────────┐
+                   │                │                │
+                   ▼                ▼                ▼
+            ┌───────────┐    ┌───────────┐   ┌──────────┐
+            │  ROUTER   │    │  ROUTER   │   │  ROUTER  │
+            │   ping    │    │  papers   │   │   ask    │
+            │ (Health)  │    │(Metadata) │   │ (Future) │
+            └─────┬─────┘    └─────┬─────┘   └─────┬────┘
+                  │                │               │
+                  │                │               │
+                  ▼                ▼               ▼
+            ┌──────────────────────────────────────────┐
+            │      DEPENDENCY INJECTION LAYER          │
+            │  ┌────────────────────────────────────┐  │
+            │  │ • SettingsDep (app.state.settings)│  │
+            │  │ • DatabaseDep (app.state.database)│  │
+            │  │ • SessionDep (DB session factory) │  │
+            │  └────────────────────────────────────┘  │
+            └──────────────────┬───────────────────────┘
+                               │
+            ┌──────────────────┼──────────────────┐
+            │                  │                  │
+            ▼                  ▼                  ▼
+    ┌─────────────┐    ┌─────────────┐   ┌──────────────┐
+    │  SERVICES   │    │ REPOSITORIES│   │   MODELS     │
+    │             │    │             │   │              │
+    │ • Ollama    │    │ • Paper     │   │ • Paper      │
+    │   Client    │    │   Repository│   │   (ORM)      │
+    └──────┬──────┘    └──────┬──────┘   └──────┬───────┘
+           │                  │                  │
+           │                  │                  │
+           │                  └────────┬─────────┘
+           │                           │
+           ▼                           ▼
+    ┌─────────────────┐      ┌──────────────────┐
+    │  OLLAMA SERVICE │      │  POSTGRESQL DB   │
+    │  (Port: 11434)  │      │  (Port: 5432)    │
+    │                 │      │                  │
+    │  Models:        │      │  Tables:         │
+    │  • llama3.2:1b  │      │  • papers        │
+    │  • gpt-oss:20b  │      │  • alembic_ver   │
+    └─────────────────┘      └──────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        API REQUEST FLOW - HEALTH CHECK
+═══════════════════════════════════════════════════════════════════════════════
+
+  Client                  API Server              Database           Ollama
+    │                         │                       │                │
+    │  GET /api/v1/health     │                       │                │
+    ├────────────────────────►│                       │                │
+    │                         │                       │                │
+    │                         │ 1. Inject Dependencies│                │
+    │                         │    (settings, database)                │
+    │                         │                       │                │
+    │                         │ 2. Test DB Connection │                │
+    │                         ├──────────────────────►│                │
+    │                         │   SELECT 1            │                │
+    │                         │◄──────────────────────┤                │
+    │                         │   Result: OK          │                │
+    │                         │                       │                │
+    │                         │ 3. Test Ollama        │                │
+    │                         ├───────────────────────────────────────►│
+    │                         │   GET /api/tags       │                │
+    │                         │◄───────────────────────────────────────┤
+    │                         │   Result: {"models": [...]}            │
+    │                         │                       │                │
+    │                         │ 4. Build Response     │                │
+    │                         │    {                  │                │
+    │                         │      status: "ok",    │                │
+    │                         │      services: {      │                │
+    │                         │        database: "healthy"             │
+    │                         │        ollama: "healthy"               │
+    │                         │      }                │                │
+    │                         │    }                  │                │
+    │                         │                       │                │
+    │  200 OK + JSON          │                       │                │
+    │◄────────────────────────┤                       │                │
+    │                         │                       │                │
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    API REQUEST FLOW - GET PAPER BY ARXIV ID
+═══════════════════════════════════════════════════════════════════════════════
+
+  Client                  API Server              Repository        Database
+    │                         │                       │                │
+    │  GET /api/v1/papers/    │                       │                │
+    │      2401.00001         │                       │                │
+    ├────────────────────────►│                       │                │
+    │                         │                       │                │
+    │                         │ 1. Path Validation    │                │
+    │                         │    Regex: ^\d{4}\.    │                │
+    │                         │           \d{4,5}     │                │
+    │                         │           (v\d+)?$    │                │
+    │                         │    ✓ Valid            │                │
+    │                         │                       │                │
+    │                         │ 2. Inject Session     │                │
+    │                         │    (SessionDep)       │                │
+    │                         │                       │                │
+    │                         │ 3. Create Repository  │                │
+    │                         ├──────────────────────►│                │
+    │                         │   PaperRepository(db) │                │
+    │                         │                       │                │
+    │                         │ 4. Query by arXiv ID  │                │
+    │                         │   get_by_arxiv_id()   │                │
+    │                         │                       ├───────────────►│
+    │                         │                       │ SELECT * FROM  │
+    │                         │                       │   papers       │
+    │                         │                       │ WHERE arxiv_id │
+    │                         │                       │   = '2401...'  │
+    │                         │                       │◄───────────────┤
+    │                         │                       │ Paper record   │
+    │                         │◄──────────────────────┤                │
+    │                         │   Paper model         │                │
+    │                         │                       │                │
+    │                         │ 5. Convert to Schema  │                │
+    │                         │    PaperResponse      │                │
+    │                         │    .model_validate()  │                │
+    │                         │                       │                │
+    │  200 OK + Paper JSON    │                       │                │
+    │◄────────────────────────┤                       │                │
+    │  {                      │                       │                │
+    │    id: "uuid",          │                       │                │
+    │    arxiv_id: "2401...", │                       │                │
+    │    title: "...",        │                       │                │
+    │    authors: [...],      │                       │                │
+    │    ...                  │                       │                │
+    │  }                      │                       │                │
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        AIRFLOW WORKFLOW ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+                    ┌──────────────────────────────────┐
+                    │     AIRFLOW CONTAINER            │
+                    │  ┌────────────────────────────┐  │
+                    │  │   Airflow Webserver        │  │
+                    │  │   (Port 8080)              │  │
+                    │  │   UI: admin/admin          │  │
+                    │  └────────────┬───────────────┘  │
+                    │               │                  │
+                    │  ┌────────────▼───────────────┐  │
+                    │  │   Airflow Scheduler        │  │
+                    │  │   (DAG Execution Engine)   │  │
+                    │  └────────────┬───────────────┘  │
+                    │               │                  │
+                    │  ┌────────────▼───────────────┐  │
+                    │  │   LocalExecutor            │  │
+                    │  │   (Task Execution)         │  │
+                    │  └────────────┬───────────────┘  │
+                    └───────────────┼──────────────────┘
+                                    │
+                                    │ reads DAGs
+                                    ▼
+                    ┌──────────────────────────────────┐
+                    │   DAGs Directory                 │
+                    │   (/opt/airflow/dags)            │
+                    │  ┌────────────────────────────┐  │
+                    │  │  hello_world_dag.py        │  │
+                    │  │  ┌──────────────────────┐  │  │
+                    │  │  │ Task 1: hello_world  │  │  │
+                    │  │  │  • Print message     │  │  │
+                    │  │  │  • Return success    │  │  │
+                    │  │  └──────────┬───────────┘  │  │
+                    │  │             │              │  │
+                    │  │             │ >>           │  │
+                    │  │             ▼              │  │
+                    │  │  ┌──────────────────────┐  │  │
+                    │  │  │ Task 2: check_services│ │  │
+                    │  │  │  • Test API health   │  │  │
+                    │  │  │  • Test DB connect   │  │  │
+                    │  │  └──────────┬───────────┘  │  │
+                    │  └─────────────┼──────────────┘  │
+                    └────────────────┼─────────────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+            ┌──────────────┐  ┌─────────────┐  ┌──────────┐
+            │  PostgreSQL  │  │  API Health │  │ OpenSearch│
+            │   (Meta DB)  │  │  Endpoint   │  │  Cluster  │
+            │              │  │             │  │           │
+            │  Stores:     │  │             │  │           │
+            │  • DAG runs  │  │             │  │           │
+            │  • Task logs │  │             │  │           │
+            │  • Variables │  │             │  │           │
+            └──────────────┘  └─────────────┘  └───────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        DATABASE LAYER ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+                    ┌──────────────────────────────────┐
+                    │   Application Layer              │
+                    │   (FastAPI Routers)              │
+                    └────────────────┬─────────────────┘
+                                     │ uses
+                                     ▼
+                    ┌──────────────────────────────────┐
+                    │   Repository Layer               │
+                    │   (src/repositories/)            │
+                    │  ┌────────────────────────────┐  │
+                    │  │  PaperRepository           │  │
+                    │  │  • get_by_arxiv_id()       │  │
+                    │  │  • create()                │  │
+                    │  │  • update()                │  │
+                    │  │  • delete()                │  │
+                    │  └────────────┬───────────────┘  │
+                    └───────────────┼──────────────────┘
+                                    │ uses
+                                    ▼
+                    ┌──────────────────────────────────┐
+                    │   Database Abstraction Layer     │
+                    │   (src/db/)                      │
+                    │  ┌────────────────────────────┐  │
+                    │  │  BaseDatabase Interface    │  │
+                    │  │  (Strategy Pattern)        │  │
+                    │  └────────────┬───────────────┘  │
+                    │               │                  │
+                    │  ┌────────────▼───────────────┐  │
+                    │  │  PostgreSQLDatabase        │  │
+                    │  │  (Concrete Implementation) │  │
+                    │  │  • startup()               │  │
+                    │  │  • get_session()           │  │
+                    │  │  • teardown()              │  │
+                    │  └────────────┬───────────────┘  │
+                    └───────────────┼──────────────────┘
+                                    │ manages
+                                    ▼
+                    ┌──────────────────────────────────┐
+                    │   SQLAlchemy ORM Layer           │
+                    │  ┌────────────────────────────┐  │
+                    │  │  Engine & Connection Pool  │  │
+                    │  │  • pool_size: 20           │  │
+                    │  │  • max_overflow: 0         │  │
+                    │  │  • pool_recycle: 3600      │  │
+                    │  └────────────┬───────────────┘  │
+                    │               │                  │
+                    │  ┌────────────▼───────────────┐  │
+                    │  │  Session Maker             │  │
+                    │  │  (Context Manager)         │  │
+                    │  └────────────┬───────────────┘  │
+                    └───────────────┼──────────────────┘
+                                    │ executes
+                                    ▼
+                    ┌──────────────────────────────────┐
+                    │   PostgreSQL Database            │
+                    │   (Port 5432)                    │
+                    │  ┌────────────────────────────┐  │
+                    │  │  Tables:                   │  │
+                    │  │  ┌──────────────────────┐  │  │
+                    │  │  │  papers              │  │  │
+                    │  │  │  • id (UUID, PK)     │  │  │
+                    │  │  │  • arxiv_id (unique) │  │  │
+                    │  │  │  • title             │  │  │
+                    │  │  │  • authors (JSON)    │  │  │
+                    │  │  │  • abstract          │  │  │
+                    │  │  │  • categories (JSON) │  │  │
+                    │  │  │  • published_date    │  │  │
+                    │  │  │  • pdf_url           │  │  │
+                    │  │  │  • created_at        │  │  │
+                    │  │  │  • updated_at        │  │  │
+                    │  │  └──────────────────────┘  │  │
+                    │  │  ┌──────────────────────┐  │  │
+                    │  │  │  alembic_version     │  │  │
+                    │  │  │  (Migration tracking)│  │  │
+                    │  │  └──────────────────────┘  │  │
+                    │  └────────────────────────────┘  │
+                    └──────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        CONFIGURATION MANAGEMENT FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+            ┌────────────────────────────────────────────┐
+            │  Environment Variables Source              │
+            │  ┌──────────────────────────────────────┐  │
+            │  │  .env file                           │  │
+            │  │  • APP_VERSION=0.1.0                 │  │
+            │  │  • DEBUG=false                       │  │
+            │  │  • POSTGRES_DATABASE_URL=postgresql:..│ │
+            │  │  • OPENSEARCH_HOST=http://opensearch..│ │
+            │  │  • OLLAMA_HOST=http://ollama:11434   │  │
+            │  │  • OLLAMA_MODELS=llama3.2:1b,...     │  │
+            │  └──────────────────┬───────────────────┘  │
+            └─────────────────────┼──────────────────────┘
+                                  │ parsed by
+                                  ▼
+            ┌────────────────────────────────────────────┐
+            │  Pydantic Settings                         │
+            │  (src/config.py)                           │
+            │  ┌──────────────────────────────────────┐  │
+            │  │  Settings Class                      │  │
+            │  │  • Validation                        │  │
+            │  │  • Type Conversion                   │  │
+            │  │  • Default Values                    │  │
+            │  │  • Field Validators                  │  │
+            │  │    - parse_ollama_models()           │  │
+            │  │      (CSV → List)                    │  │
+            │  └──────────────────┬───────────────────┘  │
+            └─────────────────────┼──────────────────────┘
+                                  │ returns
+                                  ▼
+            ┌────────────────────────────────────────────┐
+            │  Settings Instance                         │
+            │  (Immutable/Frozen)                        │
+            │  ┌──────────────────────────────────────┐  │
+            │  │  Accessed via:                       │  │
+            │  │  • get_settings()                    │  │
+            │  │  • Stored in app.state.settings      │  │
+            │  │  • Injected via SettingsDep          │  │
+            │  └──────────────────┬───────────────────┘  │
+            └─────────────────────┼──────────────────────┘
+                                  │ used by
+                    ┌─────────────┼─────────────┐
+                    │             │             │
+                    ▼             ▼             ▼
+        ┌────────────────┐ ┌──────────┐ ┌─────────────┐
+        │   Database     │ │  Ollama  │ │  OpenSearch │
+        │   Factory      │ │  Client  │ │   Client    │
+        └────────────────┘ └──────────┘ └─────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    DOCKER COMPOSE STARTUP SEQUENCE (Timeline)
+═══════════════════════════════════════════════════════════════════════════════
+
+  Time    PostgreSQL     OpenSearch      Ollama        API         Airflow
+   │          │              │             │            │              │
+   0s    ┌───▼────┐     ┌───▼────┐    ┌───▼────┐      │              │
+   │     │ START  │     │ START  │    │ START  │      │              │
+   │     │        │     │        │    │        │      │              │
+   5s    │ Init   │     │ Init   │    │ Ready  │      │              │
+   │     │ DB     │     │ Cluster│    │        │      │              │
+  10s    │        │     │        │    │ ✓ HEALTHY    │              │
+   │     │        │     │        │    └────────┘      │              │
+  15s    │ ✓ HEALTHY   │        │                     │              │
+   │     └────┬───┘     │        │                     │              │
+  20s         │         │ Build  │                     │              │
+   │          │         │ Indices│                     │              │
+  30s         │         │        │                 ┌───▼────┐    ┌───▼────┐
+   │          │         │        │                 │ START  │    │ START  │
+   │          │         │        │                 │ Build  │    │ Build  │
+  40s         │         │ Warm up│                 │ Image  │    │ Image  │
+   │          │         │        │                 │        │    │        │
+  50s         │         │        │                 │ Init   │    │ Init   │
+   │          │         │        │                 │ App    │    │ Airflow│
+  60s         │         │ ✓ HEALTHY              │        │    │ DB     │
+   │          │         └────┬───┘                 │        │    │        │
+  70s         │              │                 ┌───▼────┐   │ ┌──▼──────┐ │
+   │          │              │                 │Dash UI │   │ │Scheduler│ │
+   │          │              │                 │ START  │   │ │ START   │ │
+  80s         │              │                 │ ✓ HEALTHY │ │        │ │
+   │          │              │                 └────────┘   │ │        │ │
+  90s         │              │                     │        │ │ ✓ HEALTHY│
+   │          │              │                     │ ✓ HEALTHY└────────┘ │
+ 100s         │              │                     └────────┘             │
+   │          │              │                                      ┌─────▼───┐
+ 120s         │              │                                      │Webserver│
+   │          │              │                                      │ ✓ HEALTHY
+ 130s         │              │                                      └─────────┘
+   │          │              │                                            │
+ 140s    ┌────▼──────────────▼─────────────────────────────────────────▼────┐
+   ▼     │              ALL SERVICES HEALTHY AND READY                      │
+         └──────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    INTER-SERVICE COMMUNICATION PATTERNS
+═══════════════════════════════════════════════════════════════════════════════
+
+                            ┌──────────────────┐
+                            │   PostgreSQL     │
+                            │   (postgres)     │
+                            │   Port: 5432     │
+                            └────────┬─────────┘
+                                     │
+                                     │ TCP:5432 (SQL Protocol)
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+         ┌──────────────────┐  ┌──────────┐  ┌──────────────┐
+         │   API Service    │  │ Airflow  │  │ Alembic      │
+         │                  │  │ Metadata │  │ Migrations   │
+         │ • Paper CRUD     │  │ Storage  │  │              │
+         │ • Health checks  │  │          │  │              │
+         └──────────────────┘  └──────────┘  └──────────────┘
+
+
+                            ┌──────────────────┐
+                            │   OpenSearch     │
+                            │   (opensearch)   │
+                            │   Port: 9200     │
+                            └────────┬─────────┘
+                                     │
+                                     │ HTTP:9200 (REST API)
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+         ┌──────────────────┐  ┌──────────┐  ┌──────────────┐
+         │   API Service    │  │ Airflow  │  │ Dashboards   │
+         │   (Future:       │  │ (Future: │  │              │
+         │    Hybrid        │  │  Index   │  │ • Cluster    │
+         │    Search)       │  │  Tasks)  │  │   Monitor    │
+         └──────────────────┘  └──────────┘  │ • Dev Tools  │
+                                              └──────────────┘
+
+
+                            ┌──────────────────┐
+                            │   Ollama         │
+                            │   (ollama)       │
+                            │   Port: 11434    │
+                            └────────┬─────────┘
+                                     │
+                                     │ HTTP:11434 (REST API)
+                                     │
+                                     ▼
+                          ┌──────────────────┐
+                          │   API Service    │
+                          │                  │
+                          │ • Health checks  │
+                          │   (/api/tags)    │
+                          │ • Future: LLM    │
+                          │   inference      │
+                          └──────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        HEALTH CHECK MONITORING FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+     Docker Engine
+          │
+          │ Every interval (5s-30s depending on service)
+          │
+          ▼
+    ┌─────────────────────────────────────────────────────────────┐
+    │  Execute Health Check Command Inside Container              │
+    └─────────────────────────────────────────────────────────────┘
+          │
+          ├──────────────┬──────────────┬──────────────┬──────────────┐
+          │              │              │              │              │
+          ▼              ▼              ▼              ▼              ▼
+    ┌──────────┐   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+    │PostgreSQL│   │OpenSearch│  │  Ollama  │  │   API    │  │ Airflow  │
+    │          │   │          │  │          │  │          │  │          │
+    │pg_isready│   │curl      │  │ollama    │  │python    │  │curl      │
+    │ -U user  │   │/_cluster/│  │list      │  │urllib    │  │/health   │
+    │ -d db    │   │health    │  │          │  │/health   │  │          │
+    └────┬─────┘   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
+         │              │              │              │              │
+         │ Exit 0       │ Exit 0       │ Exit 0       │ Exit 0       │ Exit 0
+         │ = healthy    │ = healthy    │ = healthy    │ = healthy    │ = healthy
+         │              │              │              │              │
+         ▼              ▼              ▼              ▼              ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │         Docker Updates Container Health Status                   │
+    │  • starting → healthy (after successful checks)                  │
+    │  • healthy → unhealthy (after retries exhausted)                 │
+    └──────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │   Dependent Services Wait for Dependencies to be Healthy        │
+    │  • API waits for: postgres + opensearch                         │
+    │  • Airflow waits for: postgres + opensearch                     │
+    │  • Dashboards waits for: opensearch                             │
+    └──────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    DEVELOPMENT WORKFLOW & TOOLCHAIN
+═══════════════════════════════════════════════════════════════════════════════
+
+    Developer
+        │
+        │ git commit (triggers pre-commit hooks)
+        ▼
+    ┌──────────────────────────────────────────┐
+    │   Pre-commit Hook Manager                │
+    │   (.pre-commit-config.yaml)              │
+    │  ┌────────────────────────────────────┐  │
+    │  │  Hook 1: Ruff Format               │  │
+    │  │  • Format all changed .py files    │  │
+    │  │  • Line length: 130                │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │ ✓ Pass                │
+    │  ┌────────────────▼───────────────────┐  │
+    │  │  Hook 2: Ruff Check                │  │
+    │  │  • Import sorting (--select=I)     │  │
+    │  │  • Auto-fix issues                 │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │ ✓ Pass                │
+    │  ┌────────────────▼───────────────────┐  │
+    │  │  Hook 3: MyPy Type Check           │  │
+    │  │  • Static type analysis            │  │
+    │  │  • Ignore missing imports          │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │ ✓ Pass                │
+    │                   ▼                       │
+    │              Commit Allowed               │
+    └───────────────────────────────────────────┘
+
+
+    Developer runs: make test
+        │
+        ▼
+    ┌──────────────────────────────────────────┐
+    │   Pytest Test Suite                      │
+    │   (tests/)                               │
+    │  ┌────────────────────────────────────┐  │
+    │  │  Test Discovery                    │  │
+    │  │  • Find all test_*.py files       │  │
+    │  │  • Load fixtures (conftest.py)    │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │                       │
+    │  ┌────────────────▼───────────────────┐  │
+    │  │  Unit Tests (tests/unit/)          │  │
+    │  │  • Mock external dependencies      │  │
+    │  │  • Test individual functions       │  │
+    │  │  • Fast execution (<1s per test)   │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │ ✓ Pass                │
+    │  ┌────────────────▼───────────────────┐  │
+    │  │  Integration Tests (tests/api/)    │  │
+    │  │  • Testcontainers spin up:         │  │
+    │  │    - PostgreSQL container          │  │
+    │  │    - Test database                 │  │
+    │  │  • Real API requests               │  │
+    │  │  • Database transactions           │  │
+    │  └────────────────┬───────────────────┘  │
+    │                   │ ✓ Pass                │
+    │  ┌────────────────▼───────────────────┐  │
+    │  │  Coverage Report                   │  │
+    │  │  • Generate HTML report            │  │
+    │  │  • Terminal summary                │  │
+    │  │  • Target: 80%+ coverage           │  │
+    │  └────────────────────────────────────┘  │
+    └───────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        COMPLETE SYSTEM DATA FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    CURRENT DATA FLOWS (WEEK 1)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Health Check Flow:
+   Client → API → Database (SELECT 1) → API → Client
+   Client → API → Ollama (/api/tags) → API → Client
+
+2. Paper Lookup Flow (Placeholder):
+   Client → API → Repository → Database (SELECT) → Repository → API → Client
+
+3. Airflow DAG Flow:
+   Scheduler → Task → API/Database/OpenSearch → Task Result → Logs
+
+4. Configuration Flow:
+   .env → Pydantic Settings → App State → Services
+
+5. Database Connection Flow:
+   App Startup → Connection Pool → Sessions → Queries → Commit/Rollback
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    FUTURE DATA FLOWS (WEEK 2-7)                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Week 2 - Data Ingestion:
+   Airflow → arXiv API → PDF Parser → Database → OpenSearch
+
+Week 3-4 - Search:
+   Client → API → OpenSearch (BM25/Vector) → API → Client
+
+Week 5 - RAG:
+   Client → API → Search (retrieve) → LLM (generate) → API → Client
+
+Week 6 - Monitoring:
+   All Services → Langfuse → Dashboards
+   Queries → Redis Cache → Check → API
+
+Week 7 - Agentic:
+   Telegram → Bot → LangGraph Agent → Multiple Tools → Bot → Telegram
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        NETWORK SECURITY MODEL
+═══════════════════════════════════════════════════════════════════════════════
+
+    External Network                     Internal Network
+    (Host Machine)                       (Docker Bridge: rag-network)
+         │                                        │
+         │  ┌─────────────────────────────────┐  │
+         ├──┤  Port Mappings (Exposed)        ├──┤
+         │  │  • 8000  → API                  │  │
+         │  │  • 8080  → Airflow              │  │
+         │  │  • 5432  → PostgreSQL           │  │
+         │  │  • 9200  → OpenSearch           │  │
+         │  │  • 5601  → Dashboards           │  │
+         │  │  • 11434 → Ollama               │  │
+         │  └─────────────────────────────────┘  │
+         │                                        │
+    ┌────▼────────────────────────────────────────▼────┐
+    │  Internal Communication (Container Names)        │
+    │  • postgres:5432 (not exposed in production)     │
+    │  • opensearch:9200 (internal only in prod)       │
+    │  • ollama:11434 (internal only in prod)          │
+    │  • rag-api:8000 (reverse proxy in prod)          │
+    └──────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        KEY TAKEAWAYS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ARCHITECTURE: Five core microservices orchestrated via Docker Compose
+   - API (FastAPI), PostgreSQL, OpenSearch, Airflow, Ollama
+
+2. DEPENDENCY MANAGEMENT: Health-check based startup sequencing
+   - PostgreSQL → (API + Airflow + OpenSearch Dashboards)
+   - OpenSearch → (API + Airflow + OpenSearch Dashboards)
+
+3. API DESIGN: Layered architecture with dependency injection
+   - Routers → Services → Repositories → Models → Database
+
+4. DATA ACCESS: Repository pattern with database abstraction
+   - Supports pluggable database backends via Strategy pattern
+
+5. CONFIGURATION: Environment-driven with Pydantic validation
+   - .env → Pydantic Settings → App State → Services
+
+6. CODE QUALITY: Automated toolchain via pre-commit hooks
+   - Ruff (format/lint) → MyPy (type check) → Commit
+
+7. TESTING: Comprehensive suite with testcontainers
+   - Unit tests + Integration tests + Coverage reporting
+
+8. EXTENSIBILITY: Foundation ready for RAG features
+   - Week 2: Data ingestion
+   - Week 3-4: Hybrid search
+   - Week 5-7: Complete RAG system
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        END OF ARCHITECTURE DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+Document: Week 1 Infrastructure ASCII Flow Diagram
+Version: 1.0
+Created: December 2024
+Architecture: Microservices with Docker Compose
+Target: Development Environment
+Future: Production Kubernetes Deployment (Week 7)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    BUILD FROM SCRATCH - COMPLETE GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+                        🏗️  STEP-BY-STEP BUILD GUIDE  🏗️
+
+This section provides a complete, detailed guide to build the Week 1 RAG 
+infrastructure from absolute scratch. Follow each step in sequence.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    PREREQUISITES INSTALLATION FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+        START: Clean Machine
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 1: Install Docker Desktop                              │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  macOS:                                                │  │
+    │  │  1. Download from https://docker.com/products/desktop  │  │
+    │  │  2. Drag to Applications                               │  │
+    │  │  3. Launch Docker Desktop                              │  │
+    │  │  4. Grant permissions (Admin password)                 │  │
+    │  │  5. Wait for "Docker Desktop is running"               │  │
+    │  │                                                        │  │
+    │  │  Linux:                                                │  │
+    │  │  curl -fsSL https://get.docker.com -o get-docker.sh   │  │
+    │  │  sudo sh get-docker.sh                                │  │
+    │  │  sudo usermod -aG docker $USER                        │  │
+    │  │  newgrp docker                                        │  │
+    │  │                                                        │  │
+    │  │  Verify:                                               │  │
+    │  │  docker --version                                      │  │
+    │  │  docker compose version                                │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Docker Installed
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 2: Install Python 3.12+                                │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  macOS (using Homebrew):                               │  │
+    │  │  brew install python@3.12                              │  │
+    │  │                                                        │  │
+    │  │  Linux (Ubuntu/Debian):                                │  │
+    │  │  sudo apt update                                       │  │
+    │  │  sudo apt install python3.12 python3.12-venv -y       │  │
+    │  │                                                        │  │
+    │  │  Verify:                                               │  │
+    │  │  python3 --version   # Should show 3.12.x              │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Python Installed
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 3: Install UV Package Manager                          │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Quick Install:                                        │  │
+    │  │  curl -LsSf https://astral.sh/uv/install.sh | sh       │  │
+    │  │                                                        │  │
+    │  │  Add to PATH (if not automatic):                       │  │
+    │  │  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc│ │
+    │  │  source ~/.zshrc                                       │  │
+    │  │                                                        │  │
+    │  │  Verify:                                               │  │
+    │  │  uv --version                                          │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ UV Installed
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 4: Install Git                                         │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  macOS:                                                │  │
+    │  │  brew install git                                      │  │
+    │  │                                                        │  │
+    │  │  Linux:                                                │  │
+    │  │  sudo apt install git -y                               │  │
+    │  │                                                        │  │
+    │  │  Verify:                                               │  │
+    │  │  git --version                                         │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Git Installed
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 5: Configure Docker Resources                          │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Docker Desktop → Settings → Resources                 │  │
+    │  │                                                        │  │
+    │  │  Recommended Settings:                                 │  │
+    │  │  • CPUs: 4 cores minimum                               │  │
+    │  │  • Memory: 8 GB minimum (12 GB recommended)            │  │
+    │  │  • Swap: 1 GB                                          │  │
+    │  │  • Disk: 20 GB free space minimum                      │  │
+    │  │                                                        │  │
+    │  │  Apply & Restart Docker Desktop                        │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Docker Configured
+                               ▼
+                    PREREQUISITES COMPLETE ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    PROJECT SETUP FLOW (FROM SCRATCH)
+═══════════════════════════════════════════════════════════════════════════════
+
+    START: Prerequisites Complete
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 1: Create Project Directory Structure                  │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  mkdir -p ~/rag-project/week-1                         │  │
+    │  │  cd ~/rag-project/week-1                               │  │
+    │  │                                                        │  │
+    │  │  # Create directory structure                          │  │
+    │  │  mkdir -p src/{routers,services/ollama,repositories,   │  │
+    │  │              models,schemas,db/interfaces}             │  │
+    │  │  mkdir -p airflow/{dags,logs,plugins}                  │  │
+    │  │  mkdir -p tests/{unit,api}                             │  │
+    │  │  mkdir -p notebooks/week1                              │  │
+    │  │  mkdir -p static                                       │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Directories Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 2: Initialize Git Repository                           │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  git init                                              │  │
+    │  │  git config user.name "Your Name"                      │  │
+    │  │  git config user.email "your.email@example.com"        │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Git Initialized
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 3: Create pyproject.toml                               │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  cat > pyproject.toml << 'TOML'                        │  │
+    │  │  [project]                                             │  │
+    │  │  name = "rag-week-1"                                   │  │
+    │  │  version = "0.1.0"                                     │  │
+    │  │  description = "RAG Infrastructure Week 1"             │  │
+    │  │  requires-python = ">=3.12,<3.13"                      │  │
+    │  │  dependencies = [                                      │  │
+    │  │      "fastapi[standard]>=0.115.12",                    │  │
+    │  │      "uvicorn>=0.34.0",                                │  │
+    │  │      "pydantic>=2.11.3",                               │  │
+    │  │      "pydantic-settings>=2.8.1",                       │  │
+    │  │      "sqlalchemy>=2.0.0",                              │  │
+    │  │      "psycopg2-binary>=2.9.10",                        │  │
+    │  │      "alembic>=1.13.3",                                │  │
+    │  │      "opensearch-py>=3.0.0",                           │  │
+    │  │      "requests>=2.32.3",                               │  │
+    │  │      "httpx>=0.28.1",                                  │  │
+    │  │  ]                                                     │  │
+    │  │                                                        │  │
+    │  │  [dependency-groups]                                   │  │
+    │  │  dev = [                                               │  │
+    │  │      "pytest>=8.3.5",                                  │  │
+    │  │      "pytest-cov>=6.1.1",                              │  │
+    │  │      "ruff>=0.11.5",                                   │  │
+    │  │      "mypy>=1.15.0",                                   │  │
+    │  │      "pre-commit>=4.2.0",                              │  │
+    │  │  ]                                                     │  │
+    │  │  TOML                                                  │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ pyproject.toml Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 4: Install Dependencies                                │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  uv sync                                               │  │
+    │  │                                                        │  │
+    │  │  # This creates:                                       │  │
+    │  │  # - .venv/ directory with virtual environment         │  │
+    │  │  # - uv.lock file with locked dependencies             │  │
+    │  │  # - Installs all production + dev dependencies        │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Dependencies Installed
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 5: Create .env Configuration                           │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  cat > .env << 'ENV'                                   │  │
+    │  │  APP_VERSION=0.1.0                                     │  │
+    │  │  DEBUG=false                                           │  │
+    │  │  ENVIRONMENT=development                               │  │
+    │  │  SERVICE_NAME=rag-api                                  │  │
+    │  │                                                        │  │
+    │  │  # PostgreSQL                                          │  │
+    │  │  POSTGRES_DATABASE_URL=postgresql://rag_user:rag_password@postgres:5432/rag_db│
+    │  │  POSTGRES_ECHO_SQL=false                               │  │
+    │  │  POSTGRES_POOL_SIZE=20                                 │  │
+    │  │  POSTGRES_MAX_OVERFLOW=0                               │  │
+    │  │                                                        │  │
+    │  │  # OpenSearch                                          │  │
+    │  │  OPENSEARCH_HOST=http://opensearch:9200                │  │
+    │  │                                                        │  │
+    │  │  # Ollama                                              │  │
+    │  │  OLLAMA_HOST=http://ollama:11434                       │  │
+    │  │  OLLAMA_MODELS=llama3.2:1b                             │  │
+    │  │  OLLAMA_DEFAULT_MODEL=llama3.2:1b                      │  │
+    │  │  OLLAMA_TIMEOUT=300                                    │  │
+    │  │  ENV                                                   │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Environment Configured
+                               ▼
+                    PROJECT SETUP COMPLETE ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    SOURCE CODE CREATION FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+    START: Project Setup Complete
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 1: Create Configuration Module (src/config.py)         │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  from pydantic_settings import BaseSettings           │  │
+    │  │                                                        │  │
+    │  │  class Settings(BaseSettings):                         │  │
+    │  │      app_version: str = "0.1.0"                        │  │
+    │  │      debug: bool = False                               │  │
+    │  │      environment: str = "development"                  │  │
+    │  │      postgres_database_url: str                        │  │
+    │  │      opensearch_host: str                              │  │
+    │  │      ollama_host: str                                  │  │
+    │  │                                                        │  │
+    │  │      class Config:                                     │  │
+    │  │          env_file = ".env"                             │  │
+    │  │                                                        │  │
+    │  │  def get_settings() -> Settings:                       │  │
+    │  │      return Settings()                                 │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Config Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 2: Create Database Models (src/models/paper.py)        │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  from sqlalchemy import Column, String, JSON           │  │
+    │  │  from sqlalchemy.dialects.postgresql import UUID       │  │
+    │  │  from sqlalchemy.ext.declarative import declarative_base│ │
+    │  │                                                        │  │
+    │  │  Base = declarative_base()                             │  │
+    │  │                                                        │  │
+    │  │  class Paper(Base):                                    │  │
+    │  │      __tablename__ = "papers"                          │  │
+    │  │      id = Column(UUID(as_uuid=True), primary_key=True) │  │
+    │  │      arxiv_id = Column(String, unique=True)            │  │
+    │  │      title = Column(String)                            │  │
+    │  │      authors = Column(JSON)                            │  │
+    │  │      abstract = Column(String)                         │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Models Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 3: Create API Routers (src/routers/ping.py)            │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  from fastapi import APIRouter                         │  │
+    │  │                                                        │  │
+    │  │  router = APIRouter()                                  │  │
+    │  │                                                        │  │
+    │  │  @router.get("/ping")                                  │  │
+    │  │  async def ping():                                     │  │
+    │  │      return {"status": "ok", "message": "pong"}        │  │
+    │  │                                                        │  │
+    │  │  @router.get("/health")                                │  │
+    │  │  async def health_check():                             │  │
+    │  │      return {"status": "ok", "version": "0.1.0"}       │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Routers Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 4: Create Main Application (src/main.py)               │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  from fastapi import FastAPI                           │  │
+    │  │  from src.routers import ping                          │  │
+    │  │                                                        │  │
+    │  │  app = FastAPI(                                        │  │
+    │  │      title="RAG API",                                  │  │
+    │  │      version="0.1.0",                                  │  │
+    │  │      root_path="/api/v1"                               │  │
+    │  │  )                                                     │  │
+    │  │                                                        │  │
+    │  │  app.include_router(ping.router)                       │  │
+    │  │                                                        │  │
+    │  │  if __name__ == "__main__":                            │  │
+    │  │      import uvicorn                                    │  │
+    │  │      uvicorn.run(app, host="0.0.0.0", port=8000)       │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Main App Created
+                               ▼
+                    SOURCE CODE COMPLETE ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    DOCKER SETUP FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+    START: Source Code Complete
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 1: Create Dockerfile                                   │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  cat > Dockerfile << 'DOCKER'                          │  │
+    │  │  FROM ghcr.io/astral-sh/uv:python3.12-bookworm AS base│  │
+    │  │                                                        │  │
+    │  │  WORKDIR /app                                          │  │
+    │  │  COPY pyproject.toml uv.lock ./                        │  │
+    │  │  RUN uv sync --frozen --no-dev                         │  │
+    │  │  COPY src /app/src                                     │  │
+    │  │                                                        │  │
+    │  │  FROM python:3.12.8-slim AS final                      │  │
+    │  │  WORKDIR /app                                          │  │
+    │  │  COPY --from=base /app /app                            │  │
+    │  │  ENV PATH="/app/.venv/bin:$PATH"                       │  │
+    │  │  EXPOSE 8000                                           │  │
+    │  │  CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0"]  │  │
+    │  │  DOCKER                                                │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Dockerfile Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 2: Create Docker Compose File (compose.yml)            │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  services:                                             │  │
+    │  │    api:                                                │  │
+    │  │      build: .                                          │  │
+    │  │      ports: ["8000:8000"]                              │  │
+    │  │      depends_on:                                       │  │
+    │  │        postgres: {condition: service_healthy}          │  │
+    │  │        opensearch: {condition: service_healthy}        │  │
+    │  │      networks: [rag-network]                           │  │
+    │  │                                                        │  │
+    │  │    postgres:                                           │  │
+    │  │      image: postgres:16-alpine                         │  │
+    │  │      environment:                                      │  │
+    │  │        POSTGRES_DB: rag_db                             │  │
+    │  │        POSTGRES_USER: rag_user                         │  │
+    │  │        POSTGRES_PASSWORD: rag_password                 │  │
+    │  │      ports: ["5432:5432"]                              │  │
+    │  │      volumes: [postgres_data:/var/lib/postgresql/data] │  │
+    │  │      healthcheck:                                      │  │
+    │  │        test: ["CMD", "pg_isready", "-U", "rag_user"]   │  │
+    │  │        interval: 5s                                    │  │
+    │  │      networks: [rag-network]                           │  │
+    │  │                                                        │  │
+    │  │    opensearch:                                         │  │
+    │  │      image: opensearchproject/opensearch:2.19.0        │  │
+    │  │      environment:                                      │  │
+    │  │        discovery.type: single-node                     │  │
+    │  │        DISABLE_SECURITY_PLUGIN: "true"                 │  │
+    │  │      ports: ["9200:9200"]                              │  │
+    │  │      volumes: [opensearch_data:/usr/share/opensearch/data]│
+    │  │      networks: [rag-network]                           │  │
+    │  │                                                        │  │
+    │  │  volumes:                                              │  │
+    │  │    postgres_data:                                      │  │
+    │  │    opensearch_data:                                    │  │
+    │  │                                                        │  │
+    │  │  networks:                                             │  │
+    │  │    rag-network:                                        │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Docker Compose Created
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 3: Create Makefile                                     │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  .PHONY: start stop status logs health test            │  │
+    │  │                                                        │  │
+    │  │  start:                                                │  │
+    │  │      docker compose up --build -d                      │  │
+    │  │                                                        │  │
+    │  │  stop:                                                 │  │
+    │  │      docker compose down                               │  │
+    │  │                                                        │  │
+    │  │  status:                                               │  │
+    │  │      docker compose ps                                 │  │
+    │  │                                                        │  │
+    │  │  logs:                                                 │  │
+    │  │      docker compose logs -f                            │  │
+    │  │                                                        │  │
+    │  │  health:                                               │  │
+    │  │      curl http://localhost:8000/api/v1/health          │  │
+    │  │                                                        │  │
+    │  │  test:                                                 │  │
+    │  │      uv run pytest                                     │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Makefile Created
+                               ▼
+                    DOCKER SETUP COMPLETE ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    BUILD AND DEPLOY FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+    START: Docker Setup Complete
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 1: Build Docker Images                                 │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  docker compose build                                  │  │
+    │  │                                                        │  │
+    │  │  This will:                                            │  │
+    │  │  1. Build API image (multi-stage with UV)              │  │
+    │  │  2. Pull PostgreSQL 16 Alpine image                    │  │
+    │  │  3. Pull OpenSearch 2.19 image                         │  │
+    │  │  4. Pull Ollama 0.11 image                             │  │
+    │  │  5. Pull Airflow 2.10 image                            │  │
+    │  │                                                        │  │
+    │  │  Expected time: 5-10 minutes (first build)             │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Images Built
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 2: Start Services                                      │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  make start                                            │  │
+    │  │  # OR: docker compose up -d                            │  │
+    │  │                                                        │  │
+    │  │  Startup Sequence (automated):                         │  │
+    │  │  1. Create network: rag-network                        │  │
+    │  │  2. Create volumes: postgres_data, opensearch_data     │  │
+    │  │  3. Start PostgreSQL (waits for health check)          │  │
+    │  │  4. Start OpenSearch (waits for health check)          │  │
+    │  │  5. Start Ollama (waits for health check)              │  │
+    │  │  6. Start API (waits for postgres + opensearch)        │  │
+    │  │  7. Start Airflow (waits for postgres + opensearch)    │  │
+    │  │                                                        │  │
+    │  │  Expected time: 2-3 minutes                            │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Services Started
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 3: Verify Services                                     │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  make status                                           │  │
+    │  │  # OR: docker compose ps                               │  │
+    │  │                                                        │  │
+    │  │  Expected output (all healthy):                        │  │
+    │  │  rag-postgres     Up (healthy)                         │  │
+    │  │  rag-opensearch   Up (healthy)                         │  │
+    │  │  rag-ollama       Up (healthy)                         │  │
+    │  │  rag-api          Up (healthy)                         │  │
+    │  │  rag-airflow      Up (healthy)                         │  │
+    │  │  rag-dashboards   Up (healthy)                         │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ All Services Healthy
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 4: Test Health Endpoints                               │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  # Test API health                                     │  │
+    │  │  curl http://localhost:8000/api/v1/health              │  │
+    │  │  # Expected: {"status":"ok","version":"0.1.0"}         │  │
+    │  │                                                        │  │
+    │  │  # Test PostgreSQL                                     │  │
+    │  │  docker exec rag-postgres pg_isready -U rag_user       │  │
+    │  │  # Expected: accepting connections                     │  │
+    │  │                                                        │  │
+    │  │  # Test OpenSearch                                     │  │
+    │  │  curl http://localhost:9200/_cluster/health            │  │
+    │  │  # Expected: {"status":"green"}                        │  │
+    │  │                                                        │  │
+    │  │  # Test Ollama                                         │  │
+    │  │  curl http://localhost:11434/api/tags                  │  │
+    │  │  # Expected: {"models":[...]}                          │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ Health Checks Pass
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Step 5: Access Service UIs                                  │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Open in browser:                                      │  │
+    │  │                                                        │  │
+    │  │  API Documentation:                                    │  │
+    │  │  http://localhost:8000/docs                            │  │
+    │  │                                                        │  │
+    │  │  Airflow Dashboard:                                    │  │
+    │  │  http://localhost:8080                                 │  │
+    │  │  Login: admin / admin                                  │  │
+    │  │                                                        │  │
+    │  │  OpenSearch Dashboards:                                │  │
+    │  │  http://localhost:5601                                 │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │ ✓ UI Access Verified
+                               ▼
+                    BUILD & DEPLOY COMPLETE ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    COMPLETE BUILD COMMAND SEQUENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+# Copy and paste this entire sequence to build from scratch:
+
+# 1. Install Prerequisites (macOS example)
+brew install docker python@3.12 git
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Create Project
+mkdir -p ~/rag-project/week-1 && cd ~/rag-project/week-1
+mkdir -p src/{routers,services/ollama,repositories,models,schemas,db/interfaces}
+mkdir -p airflow/{dags,logs,plugins} tests/{unit,api} notebooks/week1 static
+
+# 3. Initialize Git
+git init
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+
+# 4. Clone repository (or copy files from existing week-1)
+# If you have access to the repository:
+git clone https://github.com/your-repo/rag-project.git .
+# OR copy files manually from week-1 directory
+
+# 5. Install Dependencies
+uv sync
+
+# 6. Configure Environment
+cp .env.example .env
+# Edit .env if needed
+
+# 7. Build and Start Services
+docker compose up --build -d
+
+# 8. Wait for services to be healthy (2-3 minutes)
+watch -n 5 'docker compose ps'
+
+# 9. Verify Health
+make health
+# OR manually:
+curl http://localhost:8000/api/v1/health
+curl http://localhost:9200/_cluster/health
+curl http://localhost:11434/api/tags
+
+# 10. Access UIs
+open http://localhost:8000/docs
+open http://localhost:8080
+open http://localhost:5601
+
+# 11. Run Tests
+make test
+
+# BUILD COMPLETE! 🎉
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    TROUBLESHOOTING BUILD ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+    Issue Decision Tree
+              │
+              ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Services Not Starting?                                      │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Check Docker Resources:                               │  │
+    │  │  docker system df                                      │  │
+    │  │  docker system prune -f  # Clean up                    │  │
+    │  │                                                        │  │
+    │  │  Check Logs:                                           │  │
+    │  │  docker compose logs postgres                          │  │
+    │  │  docker compose logs opensearch                        │  │
+    │  │  docker compose logs api                               │  │
+    │  │                                                        │  │
+    │  │  Restart Services:                                     │  │
+    │  │  docker compose down && docker compose up --build -d   │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Port Conflicts?                                             │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Check what's using the ports:                         │  │
+    │  │  lsof -i :8000  # API port                             │  │
+    │  │  lsof -i :5432  # PostgreSQL                           │  │
+    │  │  lsof -i :9200  # OpenSearch                           │  │
+    │  │                                                        │  │
+    │  │  Kill process or change ports in compose.yml           │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Build Failures?                                             │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Clear Docker cache:                                   │  │
+    │  │  docker compose build --no-cache                       │  │
+    │  │                                                        │  │
+    │  │  Check Python version:                                 │  │
+    │  │  python3 --version  # Must be 3.12+                    │  │
+    │  │                                                        │  │
+    │  │  Reinstall dependencies:                               │  │
+    │  │  rm -rf .venv uv.lock                                  │  │
+    │  │  uv sync                                               │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Health Checks Failing?                                      │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Wait longer (services take 2-3 min to start)          │  │
+    │  │                                                        │  │
+    │  │  Check individual service:                             │  │
+    │  │  docker exec rag-postgres pg_isready -U rag_user       │  │
+    │  │  curl http://localhost:9200/_cluster/health            │  │
+    │  │                                                        │  │
+    │  │  View full logs:                                       │  │
+    │  │  docker compose logs -f --tail=100                     │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────────────┘
+                               │
+                               ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Still Having Issues?                                        │
+    │  ┌────────────────────────────────────────────────────────┐  │
+    │  │  Complete Reset:                                       │  │
+    │  │  docker compose down -v  # Delete volumes              │  │
+    │  │  docker system prune -af  # Clean everything           │  │
+    │  │  rm -rf .venv uv.lock                                  │  │
+    │  │  uv sync                                               │  │
+    │  │  docker compose up --build -d                          │  │
+    │  └────────────────────────────────────────────────────────┘  │
+    └──────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    VERIFICATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+Complete Build Verification:
+
+Prerequisites:
+[ ] Docker Desktop installed and running
+[ ] Python 3.12+ installed
+[ ] UV package manager installed
+[ ] Git installed
+[ ] Minimum 8GB RAM allocated to Docker
+[ ] Minimum 20GB free disk space
+
+Project Setup:
+[ ] Project directory created
+[ ] Git repository initialized
+[ ] pyproject.toml exists
+[ ] Dependencies installed (uv sync completed)
+[ ] .env file configured
+[ ] All source code files created
+
+Docker Infrastructure:
+[ ] Dockerfile exists and builds successfully
+[ ] compose.yml configured correctly
+[ ] Makefile created with all commands
+[ ] All Docker images pulled/built
+[ ] Docker network created (rag-network)
+[ ] Docker volumes created (postgres_data, opensearch_data, etc.)
+
+Service Health:
+[ ] PostgreSQL: docker compose ps shows "healthy"
+[ ] OpenSearch: docker compose ps shows "healthy"
+[ ] Ollama: docker compose ps shows "healthy"
+[ ] API: docker compose ps shows "healthy"
+[ ] Airflow: docker compose ps shows "healthy"
+[ ] Dashboards: docker compose ps shows "healthy"
+
+API Testing:
+[ ] curl http://localhost:8000/api/v1/health returns 200
+[ ] curl http://localhost:8000/api/v1/ping returns 200
+[ ] Swagger UI accessible at http://localhost:8000/docs
+[ ] Health check shows all services healthy
+
+Database:
+[ ] PostgreSQL accepting connections
+[ ] Can execute: docker exec rag-postgres psql -U rag_user -d rag_db -c "SELECT 1"
+[ ] Database tables can be created
+
+Search Engine:
+[ ] OpenSearch cluster status is "green"
+[ ] curl http://localhost:9200/_cluster/health succeeds
+[ ] OpenSearch Dashboards UI loads at http://localhost:5601
+
+Workflow Orchestration:
+[ ] Airflow UI accessible at http://localhost:8080
+[ ] Can login with admin/admin
+[ ] hello_world_dag visible in DAG list
+[ ] DAG can be manually triggered
+
+LLM Service:
+[ ] Ollama responding at http://localhost:11434
+[ ] curl http://localhost:11434/api/tags returns models list
+
+Development Tools:
+[ ] make start works
+[ ] make stop works
+[ ] make status shows services
+[ ] make logs displays logs
+[ ] make health checks all services
+[ ] make test runs pytest successfully
+
+Code Quality:
+[ ] uv run ruff format runs without errors
+[ ] uv run ruff check shows no issues
+[ ] uv run mypy src/ completes type checking
+[ ] All tests pass: uv run pytest
+
+Final Validation:
+[ ] Can access all 3 UIs (API Docs, Airflow, Dashboards)
+[ ] All health endpoints return healthy status
+[ ] Services restart successfully: make restart
+[ ] Data persists after restart (volumes working)
+[ ] Logs are accessible: make logs
+
+✅ ALL CHECKS PASSED = INFRASTRUCTURE BUILD COMPLETE!
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    QUICK REFERENCE COMMANDS
+═══════════════════════════════════════════════════════════════════════════════
+
+Service Management:
+-------------------
+make start          # Start all services
+make stop           # Stop all services
+make restart        # Restart all services
+make status         # Show service status
+make logs           # Show all logs
+make health         # Check health of all services
+make clean          # Remove everything (including data)
+
+Development:
+------------
+uv sync             # Install dependencies
+uv run pytest       # Run tests
+uv run ruff format  # Format code
+uv run ruff check   # Lint code
+uv run mypy src/    # Type check
+
+Docker Commands:
+----------------
+docker compose up --build -d          # Build and start
+docker compose ps                     # List containers
+docker compose logs -f api            # Follow API logs
+docker exec -it rag-postgres bash     # Enter container
+docker compose down -v                # Stop and remove volumes
+
+Health Checks:
+--------------
+curl http://localhost:8000/api/v1/health
+curl http://localhost:9200/_cluster/health
+curl http://localhost:11434/api/tags
+docker exec rag-postgres pg_isready -U rag_user
+
+Service URLs:
+-------------
+API Docs:       http://localhost:8000/docs
+Airflow:        http://localhost:8080 (admin/admin)
+Dashboards:     http://localhost:5601
+PostgreSQL:     localhost:5432 (rag_user/rag_password)
+OpenSearch:     http://localhost:9200
+Ollama:         http://localhost:11434
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    NEXT STEPS AFTER BUILD
+═══════════════════════════════════════════════════════════════════════════════
+
+Once infrastructure is built and verified:
+
+Week 1 Completion:
+------------------
+1. Explore the Swagger UI: http://localhost:8000/docs
+2. Test all health endpoints
+3. View Airflow DAGs: http://localhost:8080
+4. Explore OpenSearch Dashboards: http://localhost:5601
+5. Run the Jupyter notebook: uv run jupyter notebook notebooks/week1/
+
+Prepare for Week 2:
+-------------------
+1. Week 2 adds: arXiv API integration
+2. Week 2 adds: PDF parsing with Docling
+3. Week 2 adds: Airflow DAGs for data ingestion
+4. Week 2 adds: Database population with papers
+
+Your infrastructure is now ready for RAG development! 🚀
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    END OF BUILD FROM SCRATCH GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+Document Updated: December 2024
+Version: 2.0 (Added Build from Scratch Guide)
+Total Sections: Architecture Diagrams + Build Guide
+Status: Complete and Ready for Production Use
+

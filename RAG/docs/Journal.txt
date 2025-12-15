@@ -1,0 +1,27 @@
+# PROJECT JOURNAL - RAG Training Project
+
+Historical record of notable sessions and major milestones.
+See journal-template.txt for format guidelines.
+
+---
+
+## Session 1 - 2025-12-01
+
+**Focus:** Git initialization and Week 1 setup
+
+**Major Changes:**
+- Initialized git repo, pushed to github.com/rupeedev/rag-training (853 files)
+- Created root .gitignore for security
+- Started Week 1 services (all 6 healthy: API, PostgreSQL, OpenSearch, Airflow, Ollama)
+- Created CLAUDE.md and docs/ structure (7 documentation files)
+
+**Key Decisions:**
+- Single unified repo (not submodules) for easier learning
+- Root-level .gitignore in addition to week-specific
+- Docs/ directory for session continuity (CURRENT_STATE, SESSION_HANDOFF, Journal)
+
+**Blockers/Issues:** None
+
+**Next:** Begin Week 1 learning path
+
+---

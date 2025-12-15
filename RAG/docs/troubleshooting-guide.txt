@@ -1,0 +1,773 @@
+# TROUBLESHOOTING GUIDE
+
+Common issues and their solutions for the RAG training project.
+
+## Service Startup Issues
+
+### Services Not Starting
+
+**Symptom:** `docker compose up` fails or services exit immediately
+
+**Solutions:**
+
+1. Check Docker is running:
+```bash
+docker ps
+# If error, start Docker Desktop
+```
+
+2. Check ports are available:
+```bash
+lsof -i :8000  # API
+lsof -i :5432  # PostgreSQL
+lsof -i :9200  # OpenSearch
+lsof -i :8080  # Airflow
+lsof -i :11434 # Ollama
+
+# Kill conflicting processes
+kill -9 [PID]
+```
+
+3. Rebuild containers:
+```bash
+docker compose down -v
+docker compose build --no-cache
+docker compose up -d
+```
+
+4. Check logs:
+```bash
+docker compose logs
+docker compose logs [service_name]
+```
+
+### Services Take Too Long to Start
+
+**Symptom:** Services stay in "starting" state for > 5 minutes
+
+**Cause:** Resource constraints or dependency issues
+
+**Solutions:**
+
+1. Check Docker resources (Settings → Resources):
+   - Memory: Allocate at least 8GB
+   - CPUs: At least 4 cores
+   - Disk: At least 20GB free
+
+2. Start services one at a time:
+```bash
+docker compose up -d postgres
+# Wait for healthy
+docker compose up -d opensearch
+# Wait for healthy
+docker compose up -d api
+```
+
+3. Check dependencies:
+```bash
+docker compose ps
+# Ensure postgres is healthy before starting api
+```
+
+## Database Issues
+
+### Cannot Connect to PostgreSQL
+
+**Symptom:** `FATAL: password authentication failed`
+
+**Solutions:**
+
+1. Check .env configuration:
+```bash
+cat .env | grep POSTGRES
+# Should match compose.yml settings
+```
+
+2. Reset database:
+```bash
+docker compose down postgres
+docker volume rm week-X_postgres_data
+docker compose up -d postgres
+```
+
+3. Verify connection:
+```bash
+docker compose exec postgres psql -U rag_user -d rag_db -c "SELECT 1;"
+```
+
+### Database Migration Errors
+
+**Symptom:** Alembic migration fails
+
+**Solutions:**
+
+1. Check current migration state:
+```bash
+docker compose exec api alembic current
+```
+
+2. Reset migrations:
+```bash
+docker compose down
+docker volume rm week-X_postgres_data
+docker compose up -d postgres
+# Wait for healthy
+docker compose up -d api
+```
+
+### Papers Not Appearing in Database
+
+**Symptom:** `SELECT COUNT(*) FROM papers;` returns 0
+
+**Solutions:**
+
+1. Check Airflow DAG ran successfully:
+```bash
+# Visit http://localhost:8080
+# Check arxiv_paper_ingestion DAG status
+```
+
+2. Check API logs:
+```bash
+docker compose logs api | grep -i error
+```
+
+3. Manually trigger ingestion:
+```bash
+# Use notebook or API endpoint
+```
+
+## OpenSearch Issues
+
+### OpenSearch Won't Start
+
+**Symptom:** OpenSearch container exits or restarts repeatedly
+
+**Solutions:**
+
+1. Check memory settings:
+```bash
+# In compose.yml, OpenSearch needs:
+# - "ES_JAVA_OPTS=-Xms512m -Xmx512m" (minimum)
+# Increase if possible: "-Xms1g -Xmx1g"
+```
+
+2. Check disk space:
+```bash
+df -h
+# OpenSearch needs at least 5GB free
+```
+
+3. Reset OpenSearch data:
+```bash
+docker compose down opensearch
+docker volume rm week-X_opensearch_data
+docker compose up -d opensearch
+```
+
+### Cannot Create Index
+
+**Symptom:** Index creation fails with 403 or 500 error
+
+**Solutions:**
+
+1. Check cluster health:
+```bash
+curl http://localhost:9200/_cluster/health?pretty
+# Should be "status": "green" or "yellow"
+```
+
+2. Check security settings:
+```bash
+# In compose.yml, ensure:
+# - "DISABLE_SECURITY_PLUGIN=true" (for development)
+```
+
+3. Recreate index:
+```bash
+curl -X DELETE http://localhost:9200/papers
+# Then recreate via API or notebook
+```
+
+### Search Returns No Results
+
+**Symptom:** Queries return empty results despite indexed data
+
+**Solutions:**
+
+1. Check index exists and has documents:
+```bash
+curl http://localhost:9200/_cat/indices?v
+curl http://localhost:9200/papers/_count?pretty
+```
+
+2. Check mapping:
+```bash
+curl http://localhost:9200/papers/_mapping?pretty
+# Verify fields are mapped correctly
+```
+
+3. Test simple query:
+```bash
+curl -X POST http://localhost:9200/papers/_search \
+  -H "Content-Type: application/json" \
+  -d '{"query": {"match_all": {}}}'
+```
+
+4. Re-index data:
+```bash
+# Delete and recreate index
+# Run indexing workflow again
+```
+
+## Ollama Issues
+
+### Model Not Found
+
+**Symptom:** `model 'llama3.2:3b-instruct-fp16' not found`
+
+**Solutions:**
+
+1. Pull model:
+```bash
+docker compose exec ollama ollama pull llama3.2:3b-instruct-fp16
+```
+
+2. List available models:
+```bash
+docker compose exec ollama ollama list
+```
+
+3. Use alternative model:
+```bash
+# In .env:
+OLLAMA__DEFAULT_MODEL=llama3.2:3b
+```
+
+### Ollama Slow Response
+
+**Symptom:** LLM generation takes > 10 seconds
+
+**Solutions:**
+
+1. Check model size matches RAM:
+```bash
+# 3b model needs ~4GB RAM
+# If insufficient, use smaller model
+```
+
+2. Reduce context size:
+```python
+# In ask endpoint, limit top_k
+top_k = 3  # Instead of 5
+```
+
+3. Use GPU if available:
+```yaml
+# In compose.yml, add to ollama service:
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+### Ollama Container Exits
+
+**Symptom:** Ollama service keeps restarting
+
+**Solutions:**
+
+1. Check logs:
+```bash
+docker compose logs ollama
+```
+
+2. Increase memory allocation:
+```bash
+# Docker Settings → Resources → Memory: 8GB+
+```
+
+3. Try alternative image:
+```yaml
+# In compose.yml:
+image: ollama/ollama:0.11.2  # Specific version
+```
+
+## Airflow Issues
+
+### Cannot Access Airflow UI
+
+**Symptom:** http://localhost:8080 not accessible
+
+**Solutions:**
+
+1. Check Airflow is running:
+```bash
+docker compose ps airflow
+# Should be "Up" and healthy
+```
+
+2. Check logs:
+```bash
+docker compose logs airflow
+```
+
+3. Get admin credentials:
+```bash
+cat airflow/simple_auth_manager_passwords.json.generated
+```
+
+4. Reset Airflow:
+```bash
+docker compose down airflow
+docker volume rm week-X_airflow_logs
+docker compose up -d airflow
+```
+
+### DAG Not Appearing
+
+**Symptom:** arXiv ingestion DAG not visible in UI
+
+**Solutions:**
+
+1. Check DAG file exists:
+```bash
+ls airflow/dags/arxiv_paper_ingestion.py
+```
+
+2. Check for Python errors:
+```bash
+docker compose exec airflow python /opt/airflow/dags/arxiv_paper_ingestion.py
+```
+
+3. Refresh DAGs:
+```bash
+# In Airflow UI, click refresh button
+# Or restart Airflow:
+docker compose restart airflow
+```
+
+### DAG Fails
+
+**Symptom:** DAG execution fails with error
+
+**Solutions:**
+
+1. Check task logs in Airflow UI
+
+2. Check API connectivity:
+```bash
+docker compose exec airflow curl http://api:8000/health
+```
+
+3. Check arXiv API rate limits:
+```bash
+# Wait 5 minutes and retry
+# arXiv has rate limits: 1 request/3 seconds
+```
+
+## API Issues
+
+### API Returns 500 Error
+
+**Symptom:** All endpoints return Internal Server Error
+
+**Solutions:**
+
+1. Check logs:
+```bash
+docker compose logs api
+```
+
+2. Check database connection:
+```bash
+docker compose exec api python -c "from src.database import database; print(database)"
+```
+
+3. Restart API:
+```bash
+docker compose restart api
+```
+
+### API Returns 404 for Valid Endpoint
+
+**Symptom:** Known endpoint returns Not Found
+
+**Solutions:**
+
+1. Check API docs:
+```bash
+open http://localhost:8000/docs
+```
+
+2. Verify router is registered:
+```bash
+docker compose exec api grep -r "include_router" /app/src/main.py
+```
+
+3. Check URL is correct:
+```bash
+# Correct: /api/v1/ask
+# Incorrect: /ask
+```
+
+### Streaming Not Working
+
+**Symptom:** /api/v1/stream returns immediately
+
+**Solutions:**
+
+1. Use SSE client:
+```bash
+# curl won't work for SSE
+# Use browser or SSE client library
+```
+
+2. Check in Gradio UI:
+```bash
+uv run python gradio_launcher.py
+open http://localhost:7861
+```
+
+## Dependency Issues
+
+### UV Sync Fails
+
+**Symptom:** `uv sync` errors or hangs
+
+**Solutions:**
+
+1. Clear cache:
+```bash
+rm -rf ~/.cache/uv
+uv sync
+```
+
+2. Use specific Python version:
+```bash
+uv sync --python 3.12
+```
+
+3. Install from lock file:
+```bash
+uv sync --frozen
+```
+
+### Import Errors
+
+**Symptom:** `ModuleNotFoundError` when running code
+
+**Solutions:**
+
+1. Ensure in correct directory:
+```bash
+pwd
+# Should be in week-X/ directory
+```
+
+2. Reinstall dependencies:
+```bash
+uv sync
+```
+
+3. Activate virtual environment:
+```bash
+source .venv/bin/activate
+```
+
+## Network Issues
+
+### Services Can't Communicate
+
+**Symptom:** API can't connect to PostgreSQL/OpenSearch
+
+**Solutions:**
+
+1. Check network:
+```bash
+docker network ls
+docker network inspect week-X_rag-network
+```
+
+2. Use service names, not localhost:
+```bash
+# Correct in container: http://opensearch:9200
+# Incorrect: http://localhost:9200
+```
+
+3. Recreate network:
+```bash
+docker compose down
+docker network prune
+docker compose up -d
+```
+
+### Cannot Access Services from Host
+
+**Symptom:** localhost:8000 not accessible
+
+**Solutions:**
+
+1. Check port binding:
+```bash
+docker compose ps
+# Should show: 0.0.0.0:8000->8000/tcp
+```
+
+2. Try 127.0.0.1:
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+3. Check firewall:
+```bash
+# macOS: System Settings → Network → Firewall
+```
+
+## Performance Issues
+
+### Slow Search Performance
+
+**Symptom:** Search takes > 2 seconds
+
+**Solutions:**
+
+1. Check index size:
+```bash
+curl http://localhost:9200/_cat/indices?v&h=index,docs.count,store.size
+```
+
+2. Reduce search parameters:
+```python
+# Reduce top_k
+top_k = 3  # Instead of 10
+```
+
+3. Add caching (Week 6+):
+```bash
+# Use Redis cache
+# Repeated queries will be much faster
+```
+
+### High Memory Usage
+
+**Symptom:** Docker uses > 10GB RAM
+
+**Solutions:**
+
+1. Reduce OpenSearch heap:
+```yaml
+# In compose.yml:
+ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+```
+
+2. Use smaller Ollama model:
+```bash
+ollama pull llama3.2:1b  # Smaller than 3b
+```
+
+3. Limit running services:
+```bash
+# Stop unused services
+docker compose stop opensearch-dashboards
+docker compose stop airflow
+```
+
+## Caching Issues (Week 6+)
+
+### Redis Not Working
+
+**Symptom:** Cache not improving performance
+
+**Solutions:**
+
+1. Check Redis is running:
+```bash
+docker compose ps redis
+```
+
+2. Test Redis connection:
+```bash
+docker compose exec redis redis-cli ping
+# Should return: PONG
+```
+
+3. Check cache keys:
+```bash
+docker compose exec redis redis-cli keys "*"
+```
+
+4. Clear cache:
+```bash
+docker compose exec redis redis-cli FLUSHALL
+```
+
+### Cache Hit Rate Low
+
+**Symptom:** Most queries are cache misses
+
+**Cause:** Exact-match caching requires identical queries
+
+**Solutions:**
+
+1. Normalize queries before caching
+2. Use fuzzy cache matching (requires implementation)
+3. Increase cache TTL in code
+
+## Monitoring Issues (Week 6+)
+
+### Langfuse Not Recording Traces
+
+**Symptom:** No traces in Langfuse dashboard
+
+**Solutions:**
+
+1. Check Langfuse is running:
+```bash
+curl http://localhost:3000
+```
+
+2. Verify keys in .env:
+```bash
+grep LANGFUSE .env
+```
+
+3. Check API logs:
+```bash
+docker compose logs api | grep langfuse
+```
+
+4. Test direct connection:
+```bash
+curl -X POST http://localhost:3000/api/public/ingestion \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LANGFUSE__PUBLIC_KEY"
+```
+
+## Telegram Bot Issues (Week 7)
+
+### Bot Not Responding
+
+**Symptom:** Messages to bot receive no response
+
+**Solutions:**
+
+1. Check token is correct:
+```bash
+grep TELEGRAM__BOT_TOKEN .env
+```
+
+2. Check bot is running:
+```bash
+docker compose logs api | grep telegram
+```
+
+3. Test bot token:
+```bash
+curl https://api.telegram.org/bot$TELEGRAM__BOT_TOKEN/getMe
+```
+
+4. Restart bot:
+```bash
+docker compose restart api
+```
+
+### Bot Commands Not Working
+
+**Symptom:** /start command not recognized
+
+**Solutions:**
+
+1. Check command handlers are registered:
+```bash
+docker compose exec api grep -r "CommandHandler" /app/src/services/telegram/
+```
+
+2. Send /start again
+3. Check bot logs for errors
+
+## General Debugging Steps
+
+1. **Check logs first:**
+   ```bash
+   docker compose logs [service]
+   ```
+
+2. **Verify service health:**
+   ```bash
+   make health
+   ```
+
+3. **Restart specific service:**
+   ```bash
+   docker compose restart [service]
+   ```
+
+4. **Nuclear option (fresh start):**
+   ```bash
+   docker compose down -v
+   docker system prune -a
+   docker compose up --build -d
+   ```
+
+5. **Check GitHub issues:**
+   - Project issues: https://github.com/rupeedev/rag-training/issues
+   - Dependency issues: Check respective project repos
+
+## Getting Help
+
+1. Check project documentation:
+   - README.md in week directories
+   - CLAUDE.md in root
+   - Blog posts referenced in README
+
+2. Check logs thoroughly:
+   ```bash
+   docker compose logs > debug.log
+   ```
+
+3. Test in isolation:
+   - Start one service at a time
+   - Test with minimal configuration
+
+4. Document the issue:
+   - Exact error message
+   - Steps to reproduce
+   - Environment details (OS, Docker version, etc.)
+   - Relevant logs
+
+## Prevention Best Practices
+
+1. **Always check health after starting:**
+   ```bash
+   make health
+   ```
+
+2. **Monitor logs during development:**
+   ```bash
+   make logs
+   ```
+
+3. **Use .env.example as template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Keep Docker updated:**
+   ```bash
+   docker --version
+   # Update Docker Desktop regularly
+   ```
+
+5. **Clean up regularly:**
+   ```bash
+   docker system prune -a
+   ```
+
+6. **Backup important data:**
+   ```bash
+   docker compose exec postgres pg_dump -U rag_user rag_db > backup.sql
+   ```
